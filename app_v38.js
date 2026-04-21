@@ -5789,6 +5789,25 @@ window.openHotelModal = async function(hId = null) {
         title.innerText = '🤝 신규 거래처 등록';
         btn.innerText = '거래처 등록';
         
+        // 🚀 신규 등록 시 모든 입력 폼 초기화 (리셋)
+        document.getElementById('h_name').value = '';
+        document.getElementById('h_ceo').value = '';
+        document.getElementById('h_phone').value = '';
+        document.getElementById('h_bizNo').value = '';
+        document.getElementById('h_address').value = '';
+        document.getElementById('h_contractType').value = 'unit';
+        document.getElementById('h_fixedAmount').value = '0';
+        document.getElementById('h_loginId').value = '';
+        document.getElementById('h_loginPw').value = '';
+        
+        const errEls = ['err_h_name', 'err_h_address', 'err_h_loginId', 'err_h_loginPw'];
+        errEls.forEach(id => {
+            const el = document.getElementById(id);
+            if(el) el.style.display = 'none';
+        });
+
+        if(typeof toggleFixedAmountField === 'function') toggleFixedAmountField();
+        
         // 신규 등록 시 공장 기본 단가 불러오기
         window.mySupabase.from('factory_default_prices').select('*').eq('factory_id', currentFactoryId).then(({data}) => {
             window.tempDefaultItems = data || [];
