@@ -2648,7 +2648,7 @@ window.togglePlatformDropdown = function() {
 };
 
 // 로그인 인라인 에러 메시지 + 빨간 테두리 + 필드 하단 힌트 헬퍼
-const LOGIN_HINTS = {
+window.LOGIN_HINTS = window.LOGIN_HINTS || {
     role:  '위 목록에서 본인의 역할을 선택해 주세요.',
     id:    '관리자로부터 발급받은 ID를 입력해 주세요.',
     pw:    '발급받은 비밀번호를 입력해 주세요.',
@@ -2672,18 +2672,18 @@ window.showLoginError = function(msg, focusTargets) {
     const applyHighlight = function() {
         if (focusTargets === 'role') {
             if(dropBtn) { dropBtn.style.outline = '2px solid #dc2626'; dropBtn.focus(); }
-            if(hintRole) { hintRole.textContent = LOGIN_HINTS.role; hintRole.style.display = 'block'; }
+            if(hintRole) { hintRole.textContent = window.LOGIN_HINTS.role; hintRole.style.display = 'block'; }
         } else if (focusTargets === 'id') {
             if(idEl) { idEl.style.outline = '2px solid #dc2626'; idEl.focus(); }
-            if(hintId) { hintId.textContent = LOGIN_HINTS.id; hintId.style.display = 'block'; }
+            if(hintId) { hintId.textContent = window.LOGIN_HINTS.id; hintId.style.display = 'block'; }
         } else if (focusTargets === 'pw') {
             if(pwEl) { pwEl.style.outline = '2px solid #dc2626'; pwEl.focus(); }
-            if(hintPw) { hintPw.textContent = LOGIN_HINTS.pw; hintPw.style.display = 'block'; }
+            if(hintPw) { hintPw.textContent = window.LOGIN_HINTS.pw; hintPw.style.display = 'block'; }
         } else if (focusTargets === 'idpw') {
             if(idEl) { idEl.style.outline = '2px solid #dc2626'; }
             if(pwEl) { pwEl.style.outline = '2px solid #dc2626'; }
-            if(hintId) { hintId.textContent = LOGIN_HINTS.idpw.id; hintId.style.display = 'block'; }
-            if(hintPw) { hintPw.textContent = LOGIN_HINTS.idpw.pw; hintPw.style.display = 'block'; }
+            if(hintId) { hintId.textContent = window.window.LOGIN_HINTS.idpw.id; hintId.style.display = 'block'; }
+            if(hintPw) { hintPw.textContent = window.window.LOGIN_HINTS.idpw.pw; hintPw.style.display = 'block'; }
             if(idEl) idEl.focus();
         }
         // 4초 후 자동 정리

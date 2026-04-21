@@ -61,7 +61,7 @@
   })();
 
   // ── 로그인 인라인 에러 힌트 함수 ──
-  const LOGIN_HINTS = {
+  window.LOGIN_HINTS = {
       role: '위 목록에서 본인의 역할을 선택해 주세요.',
       id:   '관리자로부터 발급받은 ID를 입력해 주세요.',
       pw:   '발급받은 비밀번호를 입력해 주세요.',
@@ -79,18 +79,18 @@
       var applyHighlight = function() {
           if (focusTargets === 'role') {
               if(dropBtn) { dropBtn.style.outline = '2px solid #dc2626'; dropBtn.focus(); }
-              if(hintRole) { hintRole.textContent = LOGIN_HINTS.role; hintRole.style.display = 'block'; }
+              if(hintRole) { hintRole.textContent = window.LOGIN_HINTS.role; hintRole.style.display = 'block'; }
           } else if (focusTargets === 'id') {
               if(idEl) { idEl.style.outline = '2px solid #dc2626'; idEl.focus(); }
-              if(hintId) { hintId.textContent = LOGIN_HINTS.id; hintId.style.display = 'block'; }
+              if(hintId) { hintId.textContent = window.LOGIN_HINTS.id; hintId.style.display = 'block'; }
           } else if (focusTargets === 'pw') {
               if(pwEl) { pwEl.style.outline = '2px solid #dc2626'; pwEl.focus(); }
-              if(hintPw) { hintPw.textContent = LOGIN_HINTS.pw; hintPw.style.display = 'block'; }
+              if(hintPw) { hintPw.textContent = window.LOGIN_HINTS.pw; hintPw.style.display = 'block'; }
           } else if (focusTargets === 'idpw') {
               if(idEl) idEl.style.outline = '2px solid #dc2626';
               if(pwEl) pwEl.style.outline = '2px solid #dc2626';
-              if(hintId) { hintId.textContent = LOGIN_HINTS.idpw.id; hintId.style.display = 'block'; }
-              if(hintPw) { hintPw.textContent = LOGIN_HINTS.idpw.pw; hintPw.style.display = 'block'; }
+              if(hintId) { hintId.textContent = window.window.LOGIN_HINTS.idpw.id; hintId.style.display = 'block'; }
+              if(hintPw) { hintPw.textContent = window.window.LOGIN_HINTS.idpw.pw; hintPw.style.display = 'block'; }
               if(idEl) idEl.focus();
           }
           setTimeout(function() { window.clearLoginError(); }, 4000);
@@ -1125,7 +1125,7 @@
 <script src="patch_final_consolidated.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.js.iife.js"></script>
   <script src="preview_images.js"></script>
-  <script src="app_v38.js?v=1776777996"></script>
+  <script src="app_v38.js?v=1776778333"></script>
   <script src="final_fixes.js?v=20260416"></script>
   <script src="final_send_fix.js?v=20260416"></script>
   <script src="backup_restore_revamp.js?v=20260417_2"></script>
