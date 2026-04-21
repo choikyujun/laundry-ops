@@ -6692,7 +6692,6 @@ window.updateTrendChartOnly = async function() {
 
 // [전역 강제 연결] login() 함수 전역 스코프 노출
 window.login = window.login || function() {};
-function login() { window.login(); }
 
 window._currentDeductions = [];
 window.openDeductionModal = async function() {
@@ -7682,4 +7681,3 @@ window.downloadSentLogExcel = async function(logId, displayPeriod) {
 
 // [전역 강제 연결] login() 함수 전역 스코프 노출
 window.login = window.login || function() {};
-function login() { window.login(); }
