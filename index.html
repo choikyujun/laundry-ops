@@ -107,6 +107,22 @@
           if(el) el.style.display = 'none';
       });
   };
+
+  // 로그인 버튼 클릭 시 app_v38.js 로드 전 클릭되는 경우 대비
+  window.login = function() {
+      // app_v38.js가 로드된 후 실제 함수로 교체됨. 로드 중이면 잠시 대기
+      var attempts = 0;
+      var wait = setInterval(function() {
+          attempts++;
+          if (typeof window._realLogin === 'function') {
+              clearInterval(wait);
+              window._realLogin();
+          } else if (attempts > 20) {
+              clearInterval(wait);
+              alert('페이지를 새로고침 해주세요.');
+          }
+      }, 100);
+  };
 </script>
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.css"/>

@@ -2704,7 +2704,7 @@ window.clearLoginError = function() {
     });
 };
 
-window.login = async function() {
+window._realLogin = window.login = async function() {
     const roleEl = document.getElementById('loginRole');
     const idEl = document.getElementById('loginId');
     const pwEl = document.getElementById('loginPw');
