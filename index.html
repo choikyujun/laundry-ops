@@ -487,9 +487,14 @@
 
     <!-- 탭: 직원/발행 -->
     <div id="tab_adminStaff" class="tab-content">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin:14px 0 10px;">
-            <h3 style="margin:0; font-size:15px;">👕 현장직원 및 발행 현황</h3>
-            <button class="btn btn-save" id="tour-btn-staff" onclick="openStaffModal()" style="padding:8px 14px; font-size:13px;">+ 신규 등록</button>
+        <div style="margin:14px 0 10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:10px;">
+                <h3 style="margin:0; font-size:15px; display:flex; align-items:center; gap:8px;">
+                    👕 현장직원 및 발행 현황
+                    <span style="font-size:12px; font-weight:400; color:#334155; background:#f1f5f9; padding:4px 8px; border-radius:6px;">💡 등록된 직원은 로그인 화면에서 <strong>'세탁공장 현장직원'</strong>을 선택하여 로그인하면 거래명세서를 작성하실 수 있습니다.</span>
+                </h3>
+                <button class="btn btn-save" id="tour-btn-staff" onclick="openStaffModal()" style="padding:8px 14px; font-size:13px;">+ 신규 등록</button>
+            </div>
         </div>
         <div style="display:grid; grid-template-columns: 1fr; gap:14px;">
             <div class="chart-container">
