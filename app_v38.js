@@ -232,6 +232,85 @@ function openModal(id) {
     }
 }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+// 거래명세서 인쇄 (계좌 정보 삽입 완료 후 인쇄)
+window.printInvoiceDetail = async function() {
+    // 계좌 정보 삽입 (없을 때만)
+    if (!document.getElementById('bankInfoInvoice') && currentFactoryId) {
+        try {
+            const { data: f } = await window.mySupabase
+                .from('factories').select('bank_info').eq('id', currentFactoryId).maybeSingle();
+            if (f && f.bank_info) {
+                const area = document.getElementById('invoiceDetailArea');
+                if (area) {
+                    const bankHtml = `<div id="bankInfoInvoice" style="margin-top:16px; padding:14px 18px; background:#f0fdf4; border:1.5px solid #86efac; border-radius:8px; font-size:14px; color:#166534;"><span style="font-weight:700;">💳 입금 계좌 정보: </span><span>${f.bank_info}</span></div>`;
+                    area.insertAdjacentHTML('beforeend', bankHtml);
+                }
+            }
+        } catch(e) {}
+    }
+    // 삽입 완료 후 인쇄 (다음 이벤트 루프로 지연)
+    await new Promise(r => setTimeout(r, 100));
+    printReport('invoiceDetailArea');
+};
+
+// 월정산 팝업 인쇄 (계좌 정보 포함 보장)
+window.printSendInvoice = async function() {
+    // 계좌 정보가 아직 없으면 먼저 추가
+    if (!document.getElementById('bankInfoArea') && currentFactoryId) {
+        try {
+            const { data: f } = await window.mySupabase
+                .from('factories').select('bank_info').eq('id', currentFactoryId).maybeSingle();
+            if (f && f.bank_info) {
+                const area = document.getElementById('sendInvoiceArea');
+                if (area) {
+                    const bankHtml = `<div id="bankInfoArea" style="margin-top:16px; padding:14px 18px; background:#f0fdf4; border:1.5px solid #86efac; border-radius:8px; font-size:14px; color:#166534;"><span style="font-weight:700;">💳 입금 계좌 정보: </span><span>${f.bank_info}</span></div>`;
+                    area.insertAdjacentHTML('beforeend', bankHtml);
+                }
+            }
+        } catch(e) {}
+    }
+    printReport('sendInvoiceArea');
+};
+
+// 월정산 팝업 열기 - 세탁공장 입금 계좌 정보 하단 자동 추가 (팝업/인쇄 공통)
+window.openSendInvoiceModal = async function() {
+    openModal('sendInvoiceModal');
+    try {
+        if (!currentFactoryId) return;
+        const { data: f } = await window.mySupabase
+            .from('factories')
+            .select('bank_info')
+            .eq('id', currentFactoryId)
+            .maybeSingle();
+        if (!f || !f.bank_info) return;
+
+        const bankHtml = `<div id="bankInfoArea" style="margin-top:16px; padding:14px 18px; background:#f0fdf4; border:1.5px solid #86efac; border-radius:8px; font-size:14px; color:#166534;"><span style="font-weight:700;">💳 입금 계좌 정보: </span><span>${f.bank_info}</span></div>`;
+
+        // 1) 인쇄 영역 ID가 있으면 그 안에 추가 (발송내역 팝업)
+        const printIds = ['sent-report-to-print', 'send-report-print-area'];
+        let inserted = false;
+        printIds.forEach(printId => {
+            const printEl = document.getElementById(printId);
+            if (!printEl) return;
+            const ex = printEl.querySelector('#bankInfoArea');
+            if (ex) ex.remove();
+            printEl.insertAdjacentHTML('beforeend', bankHtml);
+            inserted = true;
+        });
+
+        // 2) 인쇄 영역 없으면 sendInvoiceArea 맨 끝에 추가 (날짜조회 팝업)
+        if (!inserted) {
+            const area = document.getElementById('sendInvoiceArea');
+            if (area) {
+                const ex = area.querySelector('#bankInfoArea');
+                if (ex) ex.remove();
+                area.insertAdjacentHTML('beforeend', bankHtml);
+            }
+        }
+    } catch(e) { console.warn('[계좌 정보 표시 실패]', e); }
+};
+
 window.openManualModal = function() { openModal('manualModal'); }
 
 window.openBackupHelpModal = function() { openModal('backupHelpModal'); }
@@ -1814,19 +1893,21 @@ window.approveFactory = async function(reqId) {
     // pending_factories에서 삭제
     await window.mySupabase.from('pending_factories').delete().eq('id', reqId);
 
-    // 가입 승인 SMS → 공장 대표에게 발송
+    // 가입 승인 카카오 알림톡 → 공장 대표에게 발송
     try {
         if (p.phone) {
-            await fetch('https://tphagookafjldzvxaxui.supabase.co/functions/v1/send-sms', {
+            await fetch('https://tphagookafjldzvxaxui.supabase.co/functions/v1/send-kakao', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    receiver: p.phone.replace(/-/g, ''),
-                    message: `[CEgo플랫폼] ${p.name}님 가입이 승인되었습니다. 로그인하세요!`
+                    type: 'join',
+                    to: p.phone.replace(/-/g, ''),
+                    factoryName: p.name,
+                    representativeName: p.representative || p.name
                 })
             });
         }
-    } catch(e) { console.warn('[공장 승인 SMS 발송 실패]', e); }
+    } catch(e) { console.warn('[공장 승인 알림톡 발송 실패]', e); }
 
     window.loadSuperAdminDashboard();
     alert('성공적으로 승인되었습니다.');
@@ -2357,7 +2438,7 @@ window.viewSentReportByPeriod = function(period, sentAt) {
     </div>`;
 
     document.getElementById('sendInvoiceArea').innerHTML = reportHtml;
-    openModal('sendInvoiceModal');
+    window.openSendInvoiceModal();
 };
 
 
@@ -2613,7 +2694,7 @@ window.confirmSendInvoice = async function(sDate, eDate, hotelId, totalAmount, s
         window.loadAdminSentList();
     }
 
-    // 호텔 담당자에게 월정산 리포트 발송 SMS (if 블록 밖에서 항상 실행)
+    // 호텔 담당자에게 월정산 리포트 카카오 알림톡 발송 (if 블록 밖에서 항상 실행)
     try {
         const { data: hInfo } = await window.mySupabase
             .from('hotels')
@@ -2621,24 +2702,25 @@ window.confirmSendInvoice = async function(sDate, eDate, hotelId, totalAmount, s
             .eq('id', hotelId)
             .maybeSingle();
         if (hInfo && hInfo.phone) {
-            const eucKrBytes = (str) => [...str].reduce((acc, c) => acc + (c.charCodeAt(0) > 127 ? 2 : 1), 0);
-            const fixedPart = `[CEgo플랫폼]  ${sDate}~${eDate} 월정산 명세서가 발송되었습니다.`;
-            const fixedBytes = eucKrBytes(fixedPart);
-            let hotelName = hInfo.name;
-            while (eucKrBytes(hotelName) + fixedBytes > 89) {
-                hotelName = hotelName.slice(0, -1);
-            }
-            if (hotelName !== hInfo.name) hotelName = hotelName.slice(0, -2) + '...';
-            await fetch('https://tphagookafjldzvxaxui.supabase.co/functions/v1/send-sms', {
+            const { data: fInfo } = await window.mySupabase
+                .from('factories')
+                .select('name')
+                .eq('id', currentFactoryId)
+                .maybeSingle();
+            await fetch('https://tphagookafjldzvxaxui.supabase.co/functions/v1/send-kakao', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    receiver: hInfo.phone.replace(/-/g, ''),
-                    message: `[CEgo플랫폼] ${hotelName} ${sDate}~${eDate} 월정산 명세서가 발송되었습니다.`
+                    type: 'billing',
+                    to: hInfo.phone.replace(/-/g, ''),
+                    factoryName: fInfo ? fInfo.name : '',
+                    hotelName: hInfo.name,
+                    startDate: sDate,
+                    endDate: eDate
                 })
             });
         }
-    } catch(e) { console.warn('[월정산 SMS 발송 실패]', e); }
+    } catch(e) { console.warn('[월정산 알림톡 발송 실패]', e); }
 };
 
 
@@ -3748,19 +3830,21 @@ window.approvePayment = async function(paymentId) {
     await window.mySupabase.from('approved_payments').insert([{ ...payment, approved_at: getTodayString(), new_expiry: newExpiry }]);
     await window.mySupabase.from('pending_payments').delete().eq('id', paymentId);
 
-    // 결제 승인 SMS → 공장 대표에게 발송
+    // 결제 승인 카카오 알림톡 → 공장 대표에게 발송
     try {
         if (f.phone) {
-            await fetch('https://tphagookafjldzvxaxui.supabase.co/functions/v1/send-sms', {
+            await fetch('https://tphagookafjldzvxaxui.supabase.co/functions/v1/send-kakao', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    receiver: f.phone.replace(/-/g, ''),
-                    message: `[CEgo플랫폼] ${f.name}님 결제승인 완료! ${newExpiry}까지 이용가능합니다.`
+                    type: 'payment',
+                    to: f.phone.replace(/-/g, ''),
+                    factoryName: f.name,
+                    expiryDate: newExpiry
                 })
             });
         }
-    } catch(e) { console.warn('[결제승인 SMS 실패]', e); }
+    } catch(e) { console.warn('[결제승인 알림톡 실패]', e); }
 
     if(typeof window.fetchFromSupabase === 'function') await window.fetchFromSupabase();
     window.loadSuperAdminDashboard();
@@ -4329,7 +4413,7 @@ window.OLD_sendInvoicesToClient_0 = async function() {
     const btnHtml = `
         <div style="text-align:center; margin-top:10px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap;">
             <button onclick="openDeductionModal()" style="padding: 8px 14px; font-size: 13px; cursor:pointer; background:#ef4444; color:white; border:none; border-radius:6px;">➖ 월말 차감 내역 추가</button>
-            <button id="sendInvBtn" style="padding: 8px 20px; font-size: 14px; cursor:pointer; background:#10b981; color:white; border:none; border-radius:6px;">✈️ 거래처로 발송하기</button>
+            <button id="sendInvBtn" style="padding: 8px 20px; font-size: 14px; cursor:pointer; background:#10b981; color:white; border:none; border-radius:6px;">✈️ 거래처로 발송하기</button><button onclick="printSendInvoice()" style="padding: 8px 14px; font-size: 13px; cursor:pointer; background:#64748b; color:white; border:none; border-radius:6px;">🖨️ 인쇄하기</button>
         </div>
     `;
 
@@ -4469,7 +4553,7 @@ window.OLD_sendInvoicesToClient_0 = async function() {
         }
     };
     
-    openModal('sendInvoiceModal');
+    window.openSendInvoiceModal();
 };
 let isInvoiceLoading = false;
 window.loadAdminRecentInvoices = async function(returnList = false) {
@@ -4789,7 +4873,7 @@ window.OLD_sendInvoicesToClient_1 = async function() {
     const btnHtml = `
         <div style="text-align:center; margin-top:20px; display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
             <button onclick="openDeductionModal()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#ef4444; color:white; border:none; border-radius:8px;">➖ 월말 차감 내역 추가</button>
-            <button id="sendInvBtn" style="padding: 15px 30px; font-size: 18px; cursor:pointer; background:#10b981; color:white; border:none; border-radius:8px;">✈️ 거래처로 발송하기</button>
+            <button id="sendInvBtn" style="padding: 15px 30px; font-size: 18px; cursor:pointer; background:#10b981; color:white; border:none; border-radius:8px;">✈️ 거래처로 발송하기</button><button onclick="printSendInvoice()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#64748b; color:white; border:none; border-radius:8px;">🖨️ 인쇄하기</button>
         </div>
     `;
 
@@ -4929,7 +5013,7 @@ window.OLD_sendInvoicesToClient_1 = async function() {
         }
     };
     
-    openModal('sendInvoiceModal');
+    window.openSendInvoiceModal();
 };
 
 window.exportInvoicesToPDF = async function() {
@@ -5179,7 +5263,7 @@ window.OLD_sendInvoicesToClient_2 = async function() {
     const btnHtml = `
         <div style="text-align:center; margin-top:20px; display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
             <button onclick="openDeductionModal()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#ef4444; color:white; border:none; border-radius:8px;">➖ 월말 차감 내역 추가</button>
-            <button id="sendInvBtn" style="padding: 15px 30px; font-size: 18px; cursor:pointer; background:#10b981; color:white; border:none; border-radius:8px;">✈️ 거래처로 발송하기</button>
+            <button id="sendInvBtn" style="padding: 15px 30px; font-size: 18px; cursor:pointer; background:#10b981; color:white; border:none; border-radius:8px;">✈️ 거래처로 발송하기</button><button onclick="printSendInvoice()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#64748b; color:white; border:none; border-radius:8px;">🖨️ 인쇄하기</button>
         </div>
     `;
 
@@ -5319,7 +5403,7 @@ window.OLD_sendInvoicesToClient_2 = async function() {
         }
     };
     
-    openModal('sendInvoiceModal');
+    window.openSendInvoiceModal();
 };
 window.exportInvoicesToPDF = async function() {
     if(!window.checkInvoiceFilters()) { alert('필수 항목을 모두 선택해주세요.'); return; }
@@ -5334,6 +5418,12 @@ window.exportInvoicesToPDF = async function() {
     if(!h) { alert('거래처 정보가 없습니다.'); return; }
 
     const isSpecial = h.contract_type === 'special' || h.hotel_type === 'special';
+
+    // 세탁공장 계좌 정보 조회
+    const { data: fInfo } = await window.mySupabase.from('factories').select('bank_info').eq('id', currentFactoryId).maybeSingle();
+    const bankInfoHtml = (fInfo && fInfo.bank_info)
+        ? `<div style="margin-top:20px; padding:14px 18px; background:#f0fdf4; border:1.5px solid #86efac; border-radius:8px; font-size:14px; color:#166534;"><span style="font-weight:700;">💳 입금 계좌 정보: </span><span>${fInfo.bank_info}</span></div>`
+        : '';
 
     const { data: list, error } = await window.mySupabase.from('invoices')
         .select('id, date, total_amount, invoice_items(name, qty, price, unit)')
@@ -5485,6 +5575,7 @@ window.exportInvoicesToPDF = async function() {
             <div style="font-size:12px; font-weight:700;">공급가: ₩ ${supplyPrice.toLocaleString()} | 부가세: ₩ ${vat.toLocaleString()}</div>
             <div style="font-weight:700; font-size:14px;">총 합계: ₩ ${totalAmount.toLocaleString()}</div>
         </div>
+        ${bankInfoHtml}
     </body></html>`;
 
     const printWin = window.open('', '', 'width=1000,height=900');
@@ -5579,7 +5670,7 @@ window.OLD_sendInvoicesToClient_3 = async function() {
     const btnHtml = `
         <div style="text-align:center; margin-top:20px; display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
             <button onclick="openDeductionModal()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#ef4444; color:white; border:none; border-radius:8px;">➖ 월말 차감 내역 추가</button>
-            <button id="sendInvBtn" style="padding: 15px 30px; font-size: 18px; cursor:pointer; background:#10b981; color:white; border:none; border-radius:8px;">✈️ 거래처로 발송하기</button>
+            <button id="sendInvBtn" style="padding: 15px 30px; font-size: 18px; cursor:pointer; background:#10b981; color:white; border:none; border-radius:8px;">✈️ 거래처로 발송하기</button><button onclick="printSendInvoice()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#64748b; color:white; border:none; border-radius:8px;">🖨️ 인쇄하기</button>
         </div>
     `;
 
@@ -5719,7 +5810,7 @@ window.OLD_sendInvoicesToClient_3 = async function() {
         }
     };
     
-    openModal('sendInvoiceModal');
+    window.openSendInvoiceModal();
 };
 
 
@@ -5734,14 +5825,13 @@ window.loadAdminHotelList = async function() {
     if(error) { tbody.innerHTML = `<tr><td colspan="5" style="color:red;">에러: ${error.message}</td></tr>`; return; }
     if(!hotels || hotels.length === 0) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">등록된 거래처가 없습니다.</td></tr>'; return; }
 
-    // 가나다/ABC 순 정렬
-    hotels.sort((a, b) => a.name.localeCompare(b.name, 'ko-KR'));
+    // 가나다/ABC 앞글자 기준 정렬
+    hotels.sort((a, b) => a.name.localeCompare(b.name, 'ko', { sensitivity: 'base' }));
 
-    tbody.innerHTML = '';
-    hotels.forEach(h => {
+    tbody.innerHTML = hotels.map(h => {
         const badgeClass = h.contract_type === 'fixed' ? 'badge-fixed' : 'badge-unit';
         const badgeText = h.contract_type === 'fixed' ? '정액제' : '단가제';
-        tbody.innerHTML += `<tr>
+        return `<tr>
             <td><strong>${h.name}</strong></td>
             <td style="font-size:13px; color:var(--secondary);">${h.ceo || '-'}<br>${h.phone || '-'}</td>
             <td style="font-size:13px; color:var(--secondary);">${h.login_id}<br>****</td>
@@ -5752,7 +5842,7 @@ window.loadAdminHotelList = async function() {
                 <button class="btn-mng btn-del" onclick="deleteHotel('${h.id}')">삭제</button>
             </td>
         </tr>`;
-    });
+    }).join('');
 };
 
 window.openHotelModal = async function(hId = null) {
@@ -5963,23 +6053,28 @@ window.loadHotelCategoryList = async function() {
     
     const tagContainer = document.getElementById('h_category_tags');
     const select = document.getElementById('hp_cat');
-    if(tagContainer) tagContainer.innerHTML = '';
-    if(select) select.innerHTML = '<option value="">선택하세요</option>';
-    
+    const prevCatId = select ? select.value : ''; // 기존 선택값 보존
+
     if (cats) {
-        cats.forEach(c => {
-            if (c.name === '삭제') return; // 필터링: '삭제' 카테고리 무조건 제외
-            if (isSpecial && c.name === '기타') return; // 특수거래처에서 기타 제외
-            
-            if(tagContainer) {
-                tagContainer.innerHTML += `<span class="badge" style="background:#e2e8f0; color:#334155; display:inline-flex; align-items:center; padding:4px 8px; border-radius:12px;">
-                    ${c.name} <button onclick="deleteHotelCategory('${c.id}')" style="border:none; background:none; color:red; cursor:pointer; margin-left:5px; font-weight:bold;">×</button>
-                </span>`;
-            }
-            if(select) {
-                select.innerHTML += `<option value="${c.id}">${c.name}</option>`;
-            }
+        const filtered = cats.filter(c => {
+            if (c.name === '삭제') return false;
+            if (isSpecial && c.name === '기타') return false;
+            return true;
         });
+        if (tagContainer) {
+            tagContainer.innerHTML = filtered.map(c => `<span class="badge" style="background:#e2e8f0; color:#334155; display:inline-flex; align-items:center; padding:4px 8px; border-radius:12px;">
+                    ${c.name} <button onclick="deleteHotelCategory('${c.id}')" style="border:none; background:none; color:red; cursor:pointer; margin-left:5px; font-weight:bold;">×</button>
+                </span>`).join('');
+        }
+        if (select) {
+            // onchange 트리거 방지: 이벤트 리스너 일시 제거 후 innerHTML 교체
+            const oldOnchange = select.onchange;
+            select.onchange = null;
+            select.innerHTML = '<option value="">선택하세요</option>' + filtered.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+            // 기존 선택값 복원
+            if (prevCatId) select.value = prevCatId;
+            select.onchange = oldOnchange;
+        }
     }
 };
 
@@ -6042,88 +6137,20 @@ window.addHotelCustomItem = async function() {
         sort_order: nextOrder
     };
     
-    // 이미 같은 이름의 품목이 있는지 확인
-    const { data: exist } = await window.mySupabase.from('hotel_item_prices')
-        .select('id')
-        .eq('hotel_id', hId)
-        .eq('name', name)
-        .maybeSingle();
+    // upsert: 같은 hotel_id + name이면 업데이트, 없으면 삽입
+    const { error: upsertError } = await window.mySupabase.from('hotel_item_prices')
+        .upsert([payload], { onConflict: 'hotel_id,name' });
 
-    if (exist) {
-        // 이미 있으면 업데이트
-        const { error: updateError } = await window.mySupabase.from('hotel_item_prices')
-            .update({
-                price: payload.price,
-                unit: payload.unit,
-                category_id: payload.category_id,
-                category_name: payload.category_name,
-                sort_order: payload.sort_order
-            })
-            .eq('id', exist.id);
-            
-        if (updateError) {
-            alert('업데이트 실패: ' + updateError.message);
-            return;
-        }
-    } else {
-        // 없으면 새롭게 삽입
-        const { error: insertError } = await window.mySupabase.from('hotel_item_prices')
-            .insert([payload]);
-
-        if (insertError) {
-            console.error("DEBUG: Insert Error details:", insertError);
-            alert('품목 추가 실패: ' + insertError.message);
-            return;
-        }
+    if (upsertError) {
+        console.error("DEBUG: Upsert Error details:", upsertError);
+        alert('품목 추가 실패: ' + upsertError.message);
+        return;
     }
 
-    await window.loadHotelPriceList();
     document.getElementById('hp_name').value = '';
     document.getElementById('hp_price').value = '0';
     document.getElementById('hp_name').focus();
-};
-
-window.loadHotelPriceList = async function() {
-    const hId = window.editingHotelIdForPrice;
-    
-    // 선택된 카테고리
-    const catSelect = document.getElementById('hp_cat');
-    const selectedCatId = catSelect ? catSelect.value : '';
-    
-    // 모든 품목 조회
-    let query = window.mySupabase.from('hotel_item_prices')
-        .select('id, name, price, unit, category_id, category_name, sort_order')
-        .eq('hotel_id', hId)
-        .order('sort_order', { ascending: true }); // [Task 1] 단가수정 화면 순서와 동일하게 정렬
-    
-    const { data: items, error } = await query;
-    
-    const tbody = document.getElementById('hotelPriceList');
-    if(!tbody) return;
-    tbody.innerHTML = '';
-    
-    if(!items || items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">등록된 품목이 없습니다.</td></tr>';
-        return;
-    }
-    
-    // 카테고리 필터링 적용
-    const filteredItems = items.filter(it => {
-        if (selectedCatId && selectedCatId !== '') {
-            return it.category_id === selectedCatId;
-        }
-        return it.category_name !== '삭제';
-    });
-    
-    filteredItems.forEach(it => {
-        tbody.innerHTML += `<tr>
-            <td style="background:#f8fafc;"><span class="badge" style="background:#e2e8f0; color:#334155;">${it.category_name}</span></td>
-            <td><strong>${it.name}</strong></td>
-            <td><input type="number" value="${it.price}" onchange="updateHotelItemPrice('${it.id}', this.value)" style="width:100px; padding:4px;">원</td>
-            <td>${it.unit}</td>
-            <td><button class="btn btn-danger" style="padding:4px 8px; font-size:11px;" onclick="deleteHotelPrice('${it.id}')">삭제</button></td>
-        </tr>`;
-    });
+    await window.loadHotelPriceList();
 };
 
 window.deleteHotelPrice = async function(itemId) {
@@ -6280,15 +6307,13 @@ window.loadHotelPriceList = async function() {
         return it.category_name !== '삭제';
     });
     
-    filteredItems.forEach(it => {
-        tbody.innerHTML += `<tr>
+    tbody.innerHTML = filteredItems.map(it => `<tr>
             <td style="background:#f8fafc;"><span class="badge" style="background:#e2e8f0; color:#334155;">${it.category_name}</span></td>
             <td><strong>${it.name}</strong></td>
             <td><input type="number" value="${it.price}" onchange="updateHotelItemPrice('${it.id}', this.value)" style="width:100px; padding:4px;">원</td>
             <td>${it.unit}</td>
             <td><button class="btn btn-danger" style="padding:4px 8px; font-size:11px;" onclick="deleteHotelPrice('${it.id}')">삭제</button></td>
-        </tr>`;
-    });
+        </tr>`).join('');
 };
 
 window.loadSimplePriceList = async function() {
@@ -6312,14 +6337,12 @@ window.loadSimplePriceList = async function() {
         return;
     }
 
-    items.forEach(it => {
-        tbody.innerHTML += `<tr>
+    tbody.innerHTML = items.map(it => `<tr>
             <td><strong>${it.name}</strong></td>
             <td><input type="number" value="${it.price}" onchange="updateHotelItemPrice('${it.id}', this.value)" style="width:100px; padding:4px;">원</td>
             <td>${it.unit}</td>
             <td><button class="btn btn-danger" style="padding:4px 8px; font-size:11px;" onclick="deleteSimpleItem('${it.id}')">삭제</button></td>
-        </tr>`;
-    });
+        </tr>`).join('');
 };
 
 window.addSimpleItem = async function() {
@@ -6402,6 +6425,7 @@ window.addSimpleItem = async function() {
     
     document.getElementById('simp_name').value = '';
     document.getElementById('simp_price').value = '0';
+    document.getElementById('simp_name').focus();
     await window.loadSimplePriceList();
 };
 
@@ -6553,7 +6577,7 @@ window.viewInvoiceDetail = async function(id) {
 
     reportHtml += `
     <div style="text-align:center; margin-top:10px;">
-        <button class="btn btn-neutral" onclick="printReport('invoiceDetailArea')" style="padding:10px 30px;">🖨️ 영수증 인쇄</button>
+        <button class="btn btn-neutral" onclick="printInvoiceDetail()" style="padding:10px 30px;">🖨️ 영수증 인쇄</button>
     </div>`;
 
     document.getElementById('invoiceDetailArea').innerHTML = reportHtml;
@@ -6903,7 +6927,7 @@ window.sendInvoicesToClient = async function() {
     const btnHtml = `
         <div style="text-align:center; margin-top:20px; display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
             <button onclick="openDeductionModal()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#ef4444; color:white; border:none; border-radius:8px;">➖ 월말 차감 내역 추가</button>
-            <button id="sendInvBtn" style="padding: 15px 30px; font-size: 18px; cursor:pointer; background:#10b981; color:white; border:none; border-radius:8px;">✈️ 거래처로 발송하기</button>
+            <button id="sendInvBtn" style="padding: 15px 30px; font-size: 18px; cursor:pointer; background:#10b981; color:white; border:none; border-radius:8px;">✈️ 거래처로 발송하기</button><button onclick="printSendInvoice()" style="padding: 15px 20px; font-size: 16px; cursor:pointer; background:#64748b; color:white; border:none; border-radius:8px;">🖨️ 인쇄하기</button>
         </div>
     `;
 
@@ -7098,10 +7122,10 @@ window.sendInvoicesToClient = async function() {
         }
     };
     
-    openModal('sendInvoiceModal');
+    window.openSendInvoiceModal();
 };
 
-// 호텔 담당자에게 월정산 SMS 발송
+// 호텔 담당자에게 월정산 카카오 알림톡 발송
 window.sendKakaoOrMessage = async function(hotelId, sDate, eDate, supplyPrice, totalAmount) {
     try {
         const { data: hInfo } = await window.mySupabase
@@ -7111,24 +7135,25 @@ window.sendKakaoOrMessage = async function(hotelId, sDate, eDate, supplyPrice, t
             .maybeSingle();
         if (!hInfo || !hInfo.phone) return;
 
-        const eucKrBytes = (str) => [...str].reduce((acc, c) => acc + (c.charCodeAt(0) > 127 ? 2 : 1), 0);
-        const fixedPart = `[CEgo플랫폼]  ${sDate}~${eDate} 월정산 명세서가 발송되었습니다.`;
-        const fixedBytes = eucKrBytes(fixedPart);
-        let hotelName = hInfo.name;
-        while (eucKrBytes(hotelName) + fixedBytes > 89) {
-            hotelName = hotelName.slice(0, -1);
-        }
-        if (hotelName !== hInfo.name) hotelName = hotelName.slice(0, -2) + '...';
+        const { data: fInfo } = await window.mySupabase
+            .from('factories')
+            .select('name')
+            .eq('id', currentFactoryId)
+            .maybeSingle();
 
-        await fetch('https://tphagookafjldzvxaxui.supabase.co/functions/v1/send-sms', {
+        await fetch('https://tphagookafjldzvxaxui.supabase.co/functions/v1/send-kakao', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                receiver: hInfo.phone.replace(/-/g, ''),
-                message: `[CEgo플랫폼] ${hotelName} ${sDate}~${eDate} 월정산 명세서가 발송되었습니다.`
+                type: 'billing',
+                to: hInfo.phone.replace(/-/g, ''),
+                factoryName: fInfo ? fInfo.name : '',
+                hotelName: hInfo.name,
+                startDate: sDate,
+                endDate: eDate
             })
         });
-    } catch(e) { console.warn('[월정산 SMS 발송 실패]', e); }
+    } catch(e) { console.warn('[월정산 알림톡 발송 실패]', e); }
 };
 
 // 2. 내역확인 팝업 수정
@@ -7362,7 +7387,7 @@ window.viewSentDetail = async function(hotelName, period, sentLogId, isPartnerVi
     </div>`;
 
     document.getElementById('sendInvoiceArea').innerHTML = reportHtml;
-    openModal('sendInvoiceModal');
+    window.openSendInvoiceModal();
 };
 
 // 3. 엑셀 다운로드 수정 
@@ -7685,6 +7710,21 @@ window.downloadSentLogExcel = async function(logId, displayPeriod) {
         styleCell(totalRow, { bg: C.primary, fontColor: C.white, isBold: true, align: 'center' });
         ws.getRow(r).height = 24;
     }
+
+    // 입금 계좌 정보 행 추가
+    try {
+        const { data: fInfo } = await window.mySupabase
+            .from('factories').select('bank_info').eq('id', currentFactoryId).maybeSingle();
+        if (fInfo && fInfo.bank_info) {
+            r++;
+            const colLetter2 = String.fromCharCode(64 + itemNames.length + 1);
+            ws.mergeCells(`A${r}:${colLetter2}${r}`);
+            const bankRow = ws.getCell(`A${r}`);
+            bankRow.value = `💳 입금 계좌 정보: ${fInfo.bank_info}`;
+            styleCell(bankRow, { bg: { argb: 'FFF0FDF4' }, fontColor: { argb: 'FF166534' }, isBold: true, align: 'left' });
+            ws.getRow(r).height = 20;
+        }
+    } catch(e) { console.warn('[엑셀 계좌 정보 추가 실패]', e); }
 
     const buffer = await wb.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });

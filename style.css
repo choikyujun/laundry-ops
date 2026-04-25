@@ -13,6 +13,7 @@ body { font-family: 'Pretendard', sans-serif; margin: 0; background-color: var(-
 
 .admin-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 15px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
       .admin-table th, .admin-table td { padding: 6px 4px; border-bottom: 1px solid var(--border); text-align: center; }
+      #adminHotelList td:first-child { text-align: left; padding-left: 10px; }
       .admin-table th { background: #f8fafc; color: var(--secondary); font-weight: 600; font-size: 12px; }
       .admin-table td { font-size: 12px; }
       .admin-table input { padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px; width: 100%; box-sizing: border-box; outline: none; }
