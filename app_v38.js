@@ -6633,16 +6633,16 @@ window.viewInvoiceDetail = async function(id) {
     const el3 = document.getElementById('adminGrowthRate');
     if(el3) {
         let growthHtml = '';
-        if (prevMonthRev > 0) {
+        if (prevMonthRev === 0 && monthRev > 0) {
+            // 전월 0원 → 이번달 매출 있음 = 100% 성장
+            growthHtml = `<span style="color:var(--success);">&#9650; 100.0%</span>`;
+        } else if (prevMonthRev > 0) {
             const growth = ((monthRev - prevMonthRev) / prevMonthRev) * 100;
             growthHtml = growth >= 0
                 ? `<span style="color:var(--success);">&#9650; ${growth.toFixed(1)}%</span>`
                 : `<span style="color:var(--danger);">&#9660; ${Math.abs(growth).toFixed(1)}%</span>`;
-        } else if (monthRev > 0) {
-            // 전월 매출 0 → 이번달 매출 있음 = 신규 시작 (100% 성장)
-            growthHtml = `<span style="color:var(--success);">&#9650; 신규</span>`;
         } else {
-            growthHtml = `<span style="color:var(--secondary);">- 0%</span>`;
+            growthHtml = `<span style="color:var(--secondary);">- 0.0%</span>`;
         }
         el3.innerHTML = growthHtml;
     }
