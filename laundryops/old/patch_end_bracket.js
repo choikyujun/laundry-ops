@@ -1,0 +1,2 @@
+    URL.revokeObjectURL(url);
+};
