@@ -1254,16 +1254,16 @@ window.changePage = function(delta) {
     window.loadAdminRecentInvoices();
 };
 
-window.deleteInvoice = function(invId) {
+window.deleteInvoice = async function(invId) {
     if(!confirm('정말 이 명세서를 삭제하시겠습니까?')) return;
-    const f = platformData.factories[currentFactoryId];
-    if(f && f.history) {
-        f.history = f.history.filter(i => i.id != invId);
-        saveData();
-        loadAdminRecentInvoices();
-        loadAdminDashboard();
-        alert('삭제되었습니다.');
-    }
+    // [v38 SQL-First] DB에서 직접 삭제
+    const { error: itemErr } = await window.mySupabase.from('invoice_items').delete().eq('invoice_id', invId);
+    if(itemErr) { alert('명세서 항목 삭제 실패: ' + itemErr.message); return; }
+    const { error: invErr } = await window.mySupabase.from('invoices').delete().eq('id', invId);
+    if(invErr) { alert('명세서 삭제 실패: ' + invErr.message); return; }
+    alert('삭제되었습니다.');
+    if(typeof loadAdminRecentInvoices === 'function') loadAdminRecentInvoices();
+    if(typeof loadAdminDashboard === 'function') loadAdminDashboard();
 };
 
 window.checkInvoiceFilters = function() {
