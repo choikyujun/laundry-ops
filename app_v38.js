@@ -1658,7 +1658,7 @@ window.loadAdminHotelList = async function() {
   tbody.innerHTML = '';
   // 상단 안내 문구
   tbody.innerHTML += `<tr><td colspan="5" style="padding:6px 10px; background:#fff5f5; color:#dc2626; font-size:12px; border-bottom:1px solid #fecaca;">
-      💡 거래처명 옆 <strong>[운영중]</strong> 클릭 시 <strong>종료</strong>로, <strong>[종료]</strong> 클릭 시 <strong>운영중</strong>으로 변경됩니다. 종료된 거래처는 명세서 작성 화면에 표시되지 않습니다.
+      💡 거래처명 옆 <strong style="color:#16a34a;">[운영중]</strong> 클릭 시 <strong style="color:#dc2626;">[거래종료]</strong>로, <strong style="color:#dc2626;">[거래종료]</strong> 클릭 시 <strong style="color:#16a34a;">[운영중]</strong>으로 변경됩니다. 거래종료된 거래처는 명세서 작성 화면에 표시되지 않습니다.
   </td></tr>`;
   hotels.forEach(h => {
       const badgeClass = h.contract_type === 'fixed' ? 'badge-fixed' : 'badge-unit';
@@ -1666,7 +1666,7 @@ window.loadAdminHotelList = async function() {
       const isActive = (h.status || 'active') === 'active';
       const statusBadge = isActive
           ? `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#dcfce7;color:#16a34a;cursor:pointer;" onclick="toggleHotelStatus('${h.id}','inactive')">운영중</span>`
-          : `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#fee2e2;color:#dc2626;cursor:pointer;" onclick="toggleHotelStatus('${h.id}','active')">종&nbsp;료</span>`;
+          : `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#fee2e2;color:#dc2626;cursor:pointer;" onclick="toggleHotelStatus('${h.id}','active')">거래종료</span>`;
       tbody.innerHTML += `<tr style="${isActive ? '' : 'opacity:0.5;'}">
           <td><strong>${h.name}</strong> ${statusBadge}</td>
           <td style="font-size:13px; color:var(--secondary);">${h.ceo || '-'}<br>${h.phone || '-'}</td>
@@ -1682,7 +1682,7 @@ window.loadAdminHotelList = async function() {
 };
 
 window.toggleHotelStatus = async function(hId, newStatus) {
-    const label = newStatus === 'inactive' ? '종료' : '운영중';
+    const label = newStatus === 'inactive' ? '거래종료' : '운영중';
     if (!confirm(`이 거래처를 "${label}" 상태로 변경하시겠습니까?`)) return;
     const { error } = await window.mySupabase.from('hotels').update({ status: newStatus }).eq('id', hId);
     if (error) { alert('상태 변경 실패: ' + error.message); return; }
