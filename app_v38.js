@@ -5813,35 +5813,7 @@ window.OLD_sendInvoicesToClient_3 = async function() {
 
 
 
-window.loadAdminHotelList = async function() {
-    const tbody = document.getElementById('adminHotelList');
-    if(!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">거래처 목록을 불러오는 중...</td></tr>';
-
-    const { data: hotels, error } = await window.mySupabase.from('hotels').select('*').eq('factory_id', currentFactoryId).order('name');
-
-    if(error) { tbody.innerHTML = `<tr><td colspan="5" style="color:red;">에러: ${error.message}</td></tr>`; return; }
-    if(!hotels || hotels.length === 0) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">등록된 거래처가 없습니다.</td></tr>'; return; }
-
-    // 가나다/ABC 앞글자 기준 정렬
-    hotels.sort((a, b) => a.name.localeCompare(b.name, 'ko', { sensitivity: 'base' }));
-
-    tbody.innerHTML = hotels.map(h => {
-        const badgeClass = h.contract_type === 'fixed' ? 'badge-fixed' : 'badge-unit';
-        const badgeText = h.contract_type === 'fixed' ? '정액제' : '단가제';
-        return `<tr>
-            <td><strong>${h.name}</strong></td>
-            <td style="font-size:13px; color:var(--secondary);">${h.ceo || '-'}<br>${h.phone || '-'}</td>
-            <td style="font-size:13px; color:var(--secondary);">${h.login_id}<br>****</td>
-            <td><span class="badge ${badgeClass}">${badgeText}</span></td>
-            <td>
-                <button class="btn-mng btn-info" onclick="openHotelModal('${h.id}')">정보수정</button>
-                <button class="btn-mng btn-price" onclick="openPriceSetting('${h.id}')">단가수정</button>
-                <button class="btn-mng btn-del" onclick="deleteHotel('${h.id}')">삭제</button>
-            </td>
-        </tr>`;
-    }).join('');
-};
+// [중복 정의 제거 - line 1643의 최신 버전 사용]
 
 window.openHotelModal = async function(hId = null) {
     window.editingHotelIdForInfo = hId;
