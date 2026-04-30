@@ -362,8 +362,22 @@ window.restoreFactoryData = function(input) {
         try {
             const restoredData = JSON.parse(e.target.result);
             if (!restoredData.name || !restoredData.adminId) throw new Error("유효하지 않은 데이터 파일입니다.");
-            platformData.factories[currentFactoryId] = restoredData;
-            saveData();
+            // [v38 SQL-First] 복구 데이터를 Supabase DB에 직접 업데이트
+            const updatePayload = {
+                name: restoredData.name,
+                admin_id: restoredData.adminId,
+                admin_pw: restoredData.adminPw || restoredData.admin_pw,
+                ceo: restoredData.ceo,
+                phone: restoredData.phone,
+                address: restoredData.address,
+                bank_info: restoredData.bankInfo || restoredData.bank_info,
+                plan: restoredData.plan,
+                plan_expiry: restoredData.planExpiry || restoredData.plan_expiry,
+                status: restoredData.status,
+                memo: restoredData.memo
+            };
+            const { error: restoreErr } = await window.mySupabase.from('factories').update(updatePayload).eq('id', currentFactoryId);
+            if (restoreErr) throw new Error('DB 복구 실패: ' + restoreErr.message);
             alert('복구가 완료되었습니다.');
             
             // [수정] 강제 새로고침 시도
@@ -469,8 +483,7 @@ window.goToPaymentTab = function() {
 };
 
 window.loadAdminPayment = function() {
-    const f = platformData.factories[currentFactoryId];
-    if(!f) return;
+    if(!currentFactoryId) return;
     
     // factory ID를 사용해 최신 데이터 다시 로드
     // Supabase에서 현재 공장 정보 다시 가져오기
@@ -596,12 +609,10 @@ window.changeAdminSentPage = function(delta) {
 
 
 window.deleteSentInvoice = async function(sentAt) {
-    await window.fetchFromSupabase(); // [v33 안전 동기화] 최신 데이터 먼저 로드
-
+    // [v38 SQL-First] 레거시 코드 제거됨 - sent_logs 테이블에서 직접 삭제
     if(!confirm('정말 삭제하시겠습니까?')) return;
-    const f = platformData.factories[currentFactoryId];
-    f.sentInvoices = f.sentInvoices.filter(inv => inv.sentAt !== sentAt);
-    saveData();
+    const { error } = await window.mySupabase.from('sent_logs').delete().eq('sent_at', sentAt).eq('factory_id', currentFactoryId);
+    if(error) { alert('삭제 실패: ' + error.message); return; }
     window.loadAdminSentList();
 };
 
@@ -1192,7 +1203,9 @@ window.updateTrendChartOnly = async function() {
       
       console.log("DEBUG: diffDays =", diffDays);
       
-      const isPending = platformData.pendingPayments && platformData.pendingPayments.some(p => p.factoryId === currentFactoryId);
+      // [v38 SQL-First] pending_payments 테이블에서 직접 확인
+      const { data: pendingPayData } = await window.mySupabase.from('pending_payments').select('id').eq('factory_id', currentFactoryId).maybeSingle();
+      const isPending = !!pendingPayData;
       console.log("DEBUG: isPending =", isPending);
       
       if (isPending) {
@@ -1277,15 +1290,15 @@ window.checkInvoiceFilters = function() {
     });
     return isValid;
 };
-window.exportInvoicesToPDF = function() {
+window.exportInvoicesToPDF = async function() {
     if(!window.checkInvoiceFilters()) { alert('필수 항목을 모두 선택해주세요.'); return; }
     const hotelFilter = document.getElementById('adminStatsHotelFilter').value;
     const sDate = document.getElementById('adminStatsStartDate').value;
     const eDate = document.getElementById('adminStatsEndDate').value;
 
-    const f = platformData.factories[currentFactoryId];
-    const h = f.hotels[hotelFilter];
-    const isSpecial = h && h.hotelType === 'special';
+    // [v38 SQL-First] 거래처 정보를 DB에서 직접 조회
+    const { data: hotelData } = await window.mySupabase.from('hotels').select('hotel_type').eq('id', hotelFilter).maybeSingle();
+    const isSpecial = hotelData && hotelData.hotel_type === 'special';
 
     const list = window.loadAdminRecentInvoices(true).filter(inv => inv.date >= sDate && inv.date <= eDate);
     if(list.length === 0) { alert('해당 조건의 데이터가 없습니다.'); return; }
@@ -1443,16 +1456,16 @@ window.checkSpecialHotelAccess = async function(value) {
 };
 
 window.saveNewHotel = async function() {
-    await window.fetchFromSupabase(); // [v33 안전 동기화] 최신 데이터 먼저 로드
-
-    const f = platformData.factories[currentFactoryId],
-          hName = document.getElementById('h_name').value.trim(),
+    // [v38 SQL-First] platformData/saveData 제거 - DB 직접 CRUD
+    const hName = document.getElementById('h_name').value.trim(),
           lId = document.getElementById('h_loginId').value.trim(),
           lPw = document.getElementById('h_loginPw').value.trim();
 
     // [추가] 라이트 요금제(레벨 1)일 경우 거래처 등록 제한
-    if (getFactoryPlanLevel(f) === 1 && !editingHotelIdForInfo) {
-        if (!await window.checkHotelLimit(f)) return;
+    const { data: factoryInfo } = await window.mySupabase.from('factories').select('*').eq('id', currentFactoryId).maybeSingle();
+    if (!factoryInfo) { alert('공장 정보를 불러올 수 없습니다.'); return; }
+    if (getFactoryPlanLevel(factoryInfo) === 1 && !editingHotelIdForInfo) {
+        if (!await window.checkHotelLimit(factoryInfo)) return;
     }
 
     let isValid = true;
@@ -1482,54 +1495,58 @@ window.saveNewHotel = async function() {
 
     if (!isValid) return;
 
-    // Check ID Duplication
-    for (const fid in platformData.factories) {
-        if (platformData.factories[fid].adminId === lId) { alert('중복 ID!'); return; }
-        for (const id in platformData.factories[fid].hotels) {
-            if (platformData.factories[fid].hotels[id].loginId === lId && id !== editingHotelIdForInfo) {
-                alert('중복 호텔 ID!'); return;
-            }
-        }
-    }
+    // [v38 SQL-First] ID 중복 체크 - DB에서 직접 조회
+    const { data: dupFactory } = await window.mySupabase.from('factories').select('id').eq('admin_id', lId).maybeSingle();
+    if (dupFactory) { alert('중복 ID!'); return; }
+    const dupHotelQuery = window.mySupabase.from('hotels').select('id').eq('login_id', lId);
+    if (editingHotelIdForInfo) dupHotelQuery.neq('id', editingHotelIdForInfo);
+    const { data: dupHotel } = await dupHotelQuery.maybeSingle();
+    if (dupHotel) { alert('중복 호텔 ID!'); return; }
 
     // [추가] 라디오 버튼 값
     const selectedType = document.querySelector('input[name="h_type"]:checked').value;
 
     // [추가] 특수거래처 제한 (엔터프라이즈 전용)
     if (selectedType === 'special') {
-        if (!await window.checkAccess('SPECIAL_HOTEL', f, '특수거래처는 엔터프라이즈 요금제 전용 기능입니다. [요금제 업그레이드] 해주세요')) return;
+        if (!await window.checkAccess('SPECIAL_HOTEL', factoryInfo, '특수거래처는 엔터프라이즈 요금제 전용 기능입니다. [요금제 업그레이드] 해주세요')) return;
     }
 
     if (editingHotelIdForInfo) {
-        const h = f.hotels[editingHotelIdForInfo];
-        h.name = hName;
-        h.ceo = document.getElementById('h_ceo').value.trim();
-        h.phone = document.getElementById('h_phone').value.trim();
-        h.bizNo = document.getElementById('h_bizNo').value.trim();
-        h.address = document.getElementById('h_address').value.trim();
-        h.contractType = document.getElementById('h_contractType').value;
-        h.fixedAmount = document.getElementById('h_fixedAmount').value;
-        h.loginId = lId;
-        h.loginPw = lPw;
-        h.hotelType = selectedType; // 값 저장
-    } else {
-        const hId = 'h_' + Date.now();
-        f.hotels[hId] = {
-            id: hId,
+        // 수정 - DB 업데이트
+        const updateData = {
             name: hName,
             ceo: document.getElementById('h_ceo').value.trim(),
             phone: document.getElementById('h_phone').value.trim(),
-            bizNo: document.getElementById('h_bizNo').value.trim(),
+            biz_no: document.getElementById('h_bizNo').value.trim(),
             address: document.getElementById('h_address').value.trim(),
-            contractType: document.getElementById('h_contractType').value,
-            fixedAmount: document.getElementById('h_fixedAmount').value,
-            loginId: lId,
-            loginPw: lPw,
-            hotelType: selectedType, // 값 저장
-            items: selectedType === 'special' ? [] : JSON.parse(JSON.stringify(f.defaultItems || []))
+            contract_type: document.getElementById('h_contractType').value,
+            fixed_amount: document.getElementById('h_fixedAmount').value,
+            login_id: lId,
+            login_pw: lPw,
+            hotel_type: selectedType
         };
+        const { error: updateErr } = await window.mySupabase.from('hotels').update(updateData).eq('id', editingHotelIdForInfo);
+        if (updateErr) { alert('수정 실패: ' + updateErr.message); return; }
+    } else {
+        // 신규 등록 - DB 삽입
+        const hId = 'h_' + Date.now();
+        const insertData = {
+            id: hId,
+            factory_id: currentFactoryId,
+            name: hName,
+            ceo: document.getElementById('h_ceo').value.trim(),
+            phone: document.getElementById('h_phone').value.trim(),
+            biz_no: document.getElementById('h_bizNo').value.trim(),
+            address: document.getElementById('h_address').value.trim(),
+            contract_type: document.getElementById('h_contractType').value,
+            fixed_amount: document.getElementById('h_fixedAmount').value,
+            login_id: lId,
+            login_pw: lPw,
+            hotel_type: selectedType
+        };
+        const { error: insertErr } = await window.mySupabase.from('hotels').insert([insertData]);
+        if (insertErr) { alert('등록 실패: ' + insertErr.message); return; }
     }
-    saveData();
     closeModal('hotelModal');
     loadAdminDashboard();
     loadAdminHotelList();
@@ -1546,27 +1563,27 @@ window.loadHotelCategoryList = function() {
 */
 
 window.addHotelCategory = async function() {
-    await window.fetchFromSupabase(); // [v33 안전 동기화] 최신 데이터 먼저 로드
-
+    // [v38 SQL-First] hotel_categories 테이블에 직접 저장
     const input = document.getElementById('new_h_cat_name');
     const cat = input.value.trim();
     if (!cat) return;
 
-    const h = platformData.factories[currentFactoryId].hotels[editingHotelId];
-    if (!h.categories) h.categories = ['기타'];
-    if (h.categories.includes(cat)) { alert('이미 존재하는 카테고리입니다.'); return; }
+    // 중복 체크
+    const { data: existing } = await window.mySupabase.from('hotel_categories').select('id').eq('hotel_id', editingHotelId).eq('name', cat).maybeSingle();
+    if (existing) { alert('이미 존재하는 카테고리입니다.'); return; }
 
-    h.categories.push(cat);
-    saveData();
+    const { error } = await window.mySupabase.from('hotel_categories').insert([{ hotel_id: editingHotelId, name: cat }]);
+    if (error) { alert('카테고리 추가 실패: ' + error.message); return; }
+
     input.value = '';
     loadHotelCategoryList();
 };
 
-window.deleteHotelCategory = function(cat) {
+window.deleteHotelCategory = async function(cat) {
     if (!confirm('삭제하시겠습니까? 이 카테고리의 품목이 초기화될 수 있습니다.')) return;
-    const h = platformData.factories[currentFactoryId].hotels[editingHotelId];
-    h.categories = h.categories.filter(c => c !== cat);
-    saveData();
+    // [v38 SQL-First] hotel_categories 테이블에서 직접 삭제
+    const { error } = await window.mySupabase.from('hotel_categories').delete().eq('hotel_id', editingHotelId).eq('name', cat);
+    if (error) { alert('카테고리 삭제 실패: ' + error.message); return; }
     loadHotelCategoryList();
     loadHotelPriceList();
 };
@@ -1575,10 +1592,10 @@ window.deleteHotelCategory = function(cat) {
 
 // 기존 함수들 삭제 (아래에 최신 async 버전이 존재함)
 
-window.deleteSimpleItem = function(name) {
-    const h = platformData.factories[currentFactoryId].hotels[editingHotelId];
-    h.items = h.items.filter(i => i.name !== name);
-    saveData();
+window.deleteSimpleItem = async function(name) {
+    // [v38 SQL-First] hotel_item_prices 테이블에서 직접 삭제
+    const { error } = await window.mySupabase.from('hotel_item_prices').delete().eq('hotel_id', editingHotelId).eq('name', name);
+    if (error) { alert('품목 삭제 실패: ' + error.message); return; }
     loadSimplePriceList();
 };
 
@@ -1619,33 +1636,43 @@ window.updateHotelItemPrice = async function(id, newPrice) {
 };
 
 window.deleteHotelPrice = async function(itemName) {
-    await window.fetchFromSupabase(); // [v33 안전 동기화] 최신 데이터 먼저 로드
-
+    // [v38 SQL-First] hotel_item_prices 테이블에서 직접 삭제
     if(!confirm('정말 삭제하시겠습니까?')) return;
-    const h = platformData.factories[currentFactoryId].hotels[editingHotelId];
-    h.items = h.items.filter(i => i.name !== itemName);
-    saveData();
+    const { error } = await window.mySupabase.from('hotel_item_prices').delete().eq('hotel_id', editingHotelId).eq('name', itemName);
+    if (error) { alert('단가 삭제 실패: ' + error.message); return; }
     loadHotelPriceList();
 };
-window.loadAdminHotelList = function() {
-  platformData = JSON.parse(localStorage.getItem('laundryPlatformV4')) || { factories: {}, pendingFactories: {} };
-  const f = platformData.factories[currentFactoryId], tbody = document.getElementById('adminHotelList'); if(!tbody || !f) return; tbody.innerHTML = '';
-  for(const hId in (f.hotels || {})) {
-      const h = f.hotels[hId];
-      const badgeClass = h.contractType === 'fixed' ? 'badge-fixed' : 'badge-unit';
-      const badgeText = h.contractType === 'fixed' ? '정액제' : '단가제';
+window.loadAdminHotelList = async function() {
+  // [v38 SQL-First] DB에서 직접 조회
+  const tbody = document.getElementById('adminHotelList');
+  if(!tbody || !currentFactoryId) return;
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">거래처 목록 불러오는 중...</td></tr>';
+
+  const { data: hotels, error } = await window.mySupabase
+      .from('hotels')
+      .select('id, name, ceo, phone, login_id, contract_type')
+      .eq('factory_id', currentFactoryId)
+      .order('name');
+
+  if (error) { tbody.innerHTML = `<tr><td colspan="5" style="color:red;">에러: ${error.message}</td></tr>`; return; }
+  if (!hotels || hotels.length === 0) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">등록된 거래처가 없습니다.</td></tr>'; return; }
+
+  tbody.innerHTML = '';
+  hotels.forEach(h => {
+      const badgeClass = h.contract_type === 'fixed' ? 'badge-fixed' : 'badge-unit';
+      const badgeText = h.contract_type === 'fixed' ? '정액제' : '단가제';
       tbody.innerHTML += `<tr>
           <td><strong>${h.name}</strong></td>
           <td style="font-size:13px; color:var(--secondary);">${h.ceo || '-'}<br>${h.phone || '-'}</td>
-          <td style="font-size:13px; color:var(--secondary);">${h.loginId}<br>****</td>
+          <td style="font-size:13px; color:var(--secondary);">${h.login_id}<br>****</td>
           <td><span class="badge ${badgeClass}">${badgeText}</span></td>
           <td>
-              <button class="btn-mng btn-info" onclick="openHotelModal('${hId}')">정보수정</button>
-              <button class="btn-mng btn-price" onclick="openPriceSetting('${hId}')">단가수정</button>
-              <button class="btn-mng btn-del" onclick="deleteHotel('${hId}')">삭제</button>
+              <button class="btn-mng btn-info" onclick="openHotelModal('${h.id}')">정보수정</button>
+              <button class="btn-mng btn-price" onclick="openPriceSetting('${h.id}')">단가수정</button>
+              <button class="btn-mng btn-del" onclick="deleteHotel('${h.id}')">삭제</button>
           </td>
       </tr>`;
-  }
+  });
 };
 window.deleteHotel = async function(hId) {
     if(!confirm('삭제?')) return;
@@ -1803,15 +1830,21 @@ window.saveNewStaff = async function() {
     }
 };
 window.openDefaultPriceSetting = function() { openModal('defaultPriceModal'); window.loadAdminDefaultPriceList(); };
-window.loadAdminDefaultPriceList = function() {
-  const f = platformData.factories[currentFactoryId], tbody = document.getElementById('adminDefaultPriceList'); if(!tbody || !f) return; tbody.innerHTML = '';
-  (f.defaultItems || []).forEach((item, idx) => tbody.innerHTML += `<tr style="height:35px;"><td style="padding:4px 8px;">${item.name}</td><td style="padding:4px 8px;">${item.price.toLocaleString()}원</td><td style="padding:4px 8px;">${item.unit}</td><td style="padding:4px 8px;"><button class="btn btn-danger" style="padding:2px 6px; font-size:11px;" onclick="deleteDefaultPrice(${idx})">삭제</button></td></tr>`);
+window.loadAdminDefaultPriceList = async function() {
+  // [v38 SQL-First] factory_default_prices 테이블에서 직접 조회
+  const tbody = document.getElementById('adminDefaultPriceList');
+  if(!tbody || !currentFactoryId) return;
+  tbody.innerHTML = '';
+  const { data: items, error } = await window.mySupabase.from('factory_default_prices')
+      .select('*')
+      .eq('factory_id', currentFactoryId)
+      .order('sort_order', { ascending: true });
+  if(error) { tbody.innerHTML = `<tr><td colspan="4" style="color:red;">에러: ${error.message}</td></tr>`; return; }
+  (items || []).forEach((item) => tbody.innerHTML += `<tr style="height:35px;"><td style="padding:4px 8px;">${item.name}</td><td style="padding:4px 8px;">${Number(item.price || 0).toLocaleString()}원</td><td style="padding:4px 8px;">${item.unit || '개'}</td><td style="padding:4px 8px;"><button class="btn btn-danger" style="padding:2px 6px; font-size:11px;" onclick="deleteDefaultPrice('${item.id}')">삭제</button></td></tr>`);
 };
 window.saveDefaultPrice = async function() {
-    await window.fetchFromSupabase(); // [v33 안전 동기화] 최신 데이터 먼저 로드
-
+  // [v38 SQL-First] factory_default_prices 테이블에 직접 저장
   console.log('단가 저장 시도');
-  const f = platformData.factories[currentFactoryId];
   const nameEl = document.getElementById('dp_name');
   const priceEl = document.getElementById('dp_price');
   const unitEl = document.getElementById('dp_unit');
@@ -1823,10 +1856,16 @@ window.saveDefaultPrice = async function() {
   console.log('입력값:', name, price, unit);
 
   if(!name) { alert('품목명 입력!'); return; }
-  if(!f.defaultItems) f.defaultItems = [];
-  f.defaultItems.push({ name: name, price: price, unit: unit });
 
-  saveData();
+  const { error } = await window.mySupabase.from('factory_default_prices').insert([{
+      factory_id: currentFactoryId,
+      name: name,
+      price: price,
+      unit: unit,
+      sort_order: 0
+  }]);
+  if(error) { alert('저장 실패: ' + error.message); return; }
+
   window.loadAdminDefaultPriceList();
 
   // 입력창 초기화
@@ -1836,9 +1875,12 @@ window.saveDefaultPrice = async function() {
   nameEl.focus();
   console.log('저장 완료');
 };
-window.deleteDefaultPrice = async function(idx) {
-    await window.fetchFromSupabase(); // [v33 안전 동기화] 최신 데이터 먼저 로드
- platformData.factories[currentFactoryId].defaultItems.splice(idx, 1); saveData(); window.loadAdminDefaultPriceList(); };
+window.deleteDefaultPrice = async function(itemId) {
+    // [v38 SQL-First] factory_default_prices 테이블에서 직접 삭제
+    const { error } = await window.mySupabase.from('factory_default_prices').delete().eq('id', itemId);
+    if(error) { alert('삭제 실패: ' + error.message); return; }
+    window.loadAdminDefaultPriceList();
+};
 
 // --- Super Admin ---
 /* cleaned up old super admin code */
@@ -1929,8 +1971,11 @@ window.rejectFactory = async function(reqId) {
     }
 };
 window.updateFactoryStatus = async function(fId, s) {
-    await window.fetchFromSupabase(); // [v33 안전 동기화] 최신 데이터 먼저 로드
- platformData.factories[fId].status = s; saveData(); loadSuperAdminDashboard(); };
+    // [v38 SQL-First] DB에서 직접 상태 업데이트
+    const { error } = await window.mySupabase.from('factories').update({ status: s }).eq('id', fId);
+    if(error) { alert('상태 변경 실패: ' + error.message); return; }
+    loadSuperAdminDashboard();
+};
 window.deleteFactory = async function(fId) {
     if(confirm('정말 이 세탁공장을 삭제하시겠습니까? 관련된 모든 데이터(거래처, 명세서)가 연쇄적으로 영구 삭제됩니다!')) {
         const { error } = await window.mySupabase.from('factories').delete().eq('id', fId);
@@ -2293,11 +2338,12 @@ window.submitPaymentRequest = async function() {
     let subtotal = Math.floor(selectedPrice * months * (1 - discount));
     const total = tax ? Math.floor(subtotal * 1.1) : subtotal;
     
-    // Supabase에 직접 삽입하도록 수정
+    // [v38 SQL-First] Supabase에 직접 삽입, factory_name은 DB에서 조회
+    const { data: factoryForPayment } = await window.mySupabase.from('factories').select('name').eq('id', currentFactoryId).maybeSingle();
     const { error } = await window.mySupabase.from('pending_payments').insert([{
         id: 'pay_' + Date.now(),
         factory_id: currentFactoryId,
-        factory_name: platformData.factories[currentFactoryId].name,
+        factory_name: factoryForPayment ? factoryForPayment.name : '',
         plan: selectedPlan,
         months: months,
         total: total,
@@ -2362,108 +2408,42 @@ window.printReport = function(htmlContent) {
 };
 
 
-window.viewSentReportByPeriod = function(period, sentAt) {
-    const f = platformData.factories[currentFactoryId];
-    const h = f.hotels[currentHotelId];
-    const sentInv = f.sentInvoices.find(s => s.period === period && s.hotelName === h.name);
-    const [sDate, eDate] = period.split(' ~ ');
-    const list = f.history.filter(inv => inv.hotelId === currentHotelId && inv.date >= sDate && inv.date <= eDate && inv.isSent === true);
+window.viewSentReportByPeriod = async function(period, sentAt) {
+    // [v38 SQL-First] sent_logs 테이블에서 직접 조회 후 viewSentDetail로 위임
+    const { data: logEntry } = await window.mySupabase.from('sent_logs')
+        .select('*, hotels(name)')
+        .eq('factory_id', currentFactoryId)
+        .eq('hotel_id', currentHotelId)
+        .eq('period', period)
+        .maybeSingle();
 
-    // sentAt을 이용해 고유 정산 상태 확인
-    const isConfirmed = h.confirmedMonths && (h.confirmedMonths[sentAt] === true);
+    if (!logEntry) { alert('발송 기록을 찾을 수 없습니다.'); return; }
 
-    const itemsList = h.items || [];
-    const itemNames = itemsList.map(i => i.name);
-
-    const dateSequence = [];
-    let curDate = new Date(sDate);
-    const endDate = new Date(eDate);
-    while (curDate <= endDate) {
-        dateSequence.push(curDate.toISOString().split('T')[0]);
-        curDate.setDate(curDate.getDate() + 1);
-    }
-
-    const dailyData = {};
-    dateSequence.forEach(d => dailyData[d] = {});
-    list.forEach(inv => {
-        if(!dailyData[inv.date]) dailyData[inv.date] = {};
-        inv.items.forEach(it => {
-            dailyData[inv.date][it.name] = (dailyData[inv.date][it.name] || 0) + it.qty;
-        });
-    });
-
-    const totals = {};
-    itemNames.forEach(name => {
-        totals[name] = { qty: 0, price: itemsList.find(i => i.name === name).price };
-        dateSequence.forEach(d => totals[name].qty += (dailyData[d][name] || 0));
-        totals[name].amount = totals[name].qty * totals[name].price;
-    });
-    // 저장된 데이터를 우선 사용하고 없으면 재계산
-    const supplyPrice = sentInv ? sentInv.supplyPrice : list.reduce((sum, inv) => sum + inv.total, 0);
-    const vat = sentInv ? sentInv.vat : Math.floor(supplyPrice * 0.1);
-    const total = sentInv ? sentInv.totalAmount : (supplyPrice + vat);
-
-    const reportHtml = `
-    <div id='sent-report-to-print' style="font-family:'Malgun Gothic', sans-serif; padding:20px;">
-        <h1 style="text-align:center; color:#0f172a; border-bottom:3px solid #005b9f; padding-bottom:15px; margin-bottom:20px; font-size:24px;">거래처 발송용 명세서 (${h.name})</h1>
-        <div style="text-align: left; margin-bottom: 10px; color: #0f172a; font-size: 14px; font-weight: 700;">조회 기간: ${period}</div>
-        <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
-        <table style="width: 100%; border-collapse: collapse; margin-top: 5px; border: 1px solid #cbd5e1; min-width: 600px;">
-            <thead>
-                <tr>
-                    <th style="background: #f1f5f9; color: #475569; font-weight: 700; padding: 4px; font-size: 11px; border: 1px solid #cbd5e1;">일자</th>
-                    ${itemNames.map(name => `<th style="background: #f1f5f9; color: #475569; font-weight: 700; padding: 4px; font-size: 11px; border: 1px solid #cbd5e1;">${name}</th>`).join('')}
-                </tr>
-            </thead>
-            <tbody>
-                ${dateSequence.map(d => `
-                    <tr>
-                        <td style="padding: 2px 4px; border: 1px solid #cbd5e1; text-align: center; font-size: 11px; font-weight: 600; background: #f8fafc;">${parseInt(d.substring(8))}</td>
-                        ${itemNames.map(name => `<td style="padding: 2px 4px; border: 1px solid #cbd5e1; text-align: center; font-size: 11px;">${dailyData[d][name] || '0'}</td>`).join('')}
-                    </tr>
-                `).join('')}
-            </tbody>
-            <tfoot>
-                <tr style="font-weight: 700; background: #e2e8f0;">
-                    <td style="padding: 4px; border: 1px solid #cbd5e1; text-align: center; font-size: 11px;">수량 합계</td>
-                    ${itemNames.map(name => `<td style="padding: 4px; border: 1px solid #cbd5e1; text-align: center; font-size: 11px;">${totals[name].qty}</td>`).join('')}
-                </tr>
-                <tr style="font-weight: 700; background: #fef3c7;">
-                    <td style="padding: 4px; border: 1px solid #cbd5e1; text-align: center; font-size: 11px;">항목 합계</td>
-                    ${itemNames.map(name => `<td style="padding: 4px; border: 1px solid #cbd5e1; text-align: center; font-size: 11px;">₩ ${totals[name].amount.toLocaleString()}</td>`).join('')}
-                </tr>
-            </tfoot>
-        </table>
-        <div style="margin-top: 20px; padding: 15px; border: 2px solid #005b9f; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; background: #eff6ff;">
-            <div style="font-size: 14px; font-weight: 700;">공급가액: ₩ ${supplyPrice.toLocaleString()} + VAT: ₩ ${vat.toLocaleString()}</div>
-            <div style="font-weight: 700; font-size: 16px;">총합계: ₩ ${total.toLocaleString()}</div>
-        </div>
-    </div>
-
-    <div style="margin-top: 30px; text-align: center; display:flex; justify-content:center; gap:10px;" class="no-print">
-        ${!isConfirmed ? `<button class="btn btn-save no-print" style="width:200px; padding:15px; background:#10b981; border:none; color:white; font-weight:700;" onclick="confirmSentReportByPeriod('${sentAt}')">✅ 정산 확인 완료</button>` : '<div style="color: var(--success); font-weight: 700;">✅ 이미 확인된 내역입니다.</div>'}
-        <button class="btn btn-neutral no-print" onclick="printReport('sent-report-to-print')" style="padding: 15px 40px; cursor: pointer; font-size: 16px;">🖨️ 인쇄하기</button>
-    </div>`;
-
-    document.getElementById('sendInvoiceArea').innerHTML = reportHtml;
-    window.openSendInvoiceModal();
+    await window.viewSentDetail(
+        logEntry.hotels ? logEntry.hotels.name : '',
+        logEntry.period,
+        logEntry.id,
+        true,
+        logEntry.hotel_id,
+        !!logEntry.is_confirmed
+    );
 };
 
 
 window.confirmSentReportByPeriod = async function(sentAt) {
-    await window.fetchFromSupabase(); // [v33 안전 동기화] 최신 데이터 먼저 로드
-
+    // [v38 SQL-First] sent_logs 테이블에서 is_confirmed 업데이트
     console.log("DEBUG: Confirming settlement for sentAt:", sentAt);
-    // 로컬스토리지에서 최신 데이터 로드
-    platformData = JSON.parse(localStorage.getItem('laundryPlatformV4')) || { factories: {}, pendingFactories: {} };
 
-    const f = platformData.factories[currentFactoryId];
-    const h = f.hotels[currentHotelId];
-    if(!h.confirmedMonths) h.confirmedMonths = {};
+    const { data: logEntry } = await window.mySupabase.from('sent_logs')
+        .select('id')
+        .eq('sent_at', sentAt)
+        .eq('factory_id', currentFactoryId)
+        .maybeSingle();
 
-    h.confirmedMonths[sentAt] = true;
+    if (!logEntry) { alert('발송 기록을 찾을 수 없습니다.'); return; }
 
-    saveData();
+    const { error } = await window.mySupabase.from('sent_logs').update({ is_confirmed: true }).eq('id', logEntry.id);
+    if (error) { alert('정산 확인 처리 실패: ' + error.message); return; }
 
     // 모달창 강제 닫기
     const modals = document.querySelectorAll('.modal-overlay');
@@ -2670,32 +2650,31 @@ window.confirmHotelSettlement = async function(logId) {
 // [v38] 정산 리포트 Excel 다운로드 - ExcelJS 색상 스타일 적용
 
 window.confirmSendInvoice = async function(sDate, eDate, hotelId, totalAmount, supplyPrice, vat) {
-    await window.fetchFromSupabase(); // [v33 안전 동기화] 최신 데이터 먼저 로드
+    // [v38 SQL-First] sent_logs 테이블에 직접 저장
+    const { data: hInfo } = await window.mySupabase.from('hotels').select('name').eq('id', hotelId).maybeSingle();
+    const sentAtVal = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
-    const f = platformData.factories[currentFactoryId];
-    if (f && f.history) {
-        f.history.forEach(inv => {
-            if (inv.hotelId === hotelId && inv.date >= sDate && inv.date <= eDate) {
-                inv.isSent = true;
-                inv.reportPeriod = sDate + ' ~ ' + eDate;
-            }
-        });
+    const { error: sentErr } = await window.mySupabase.from('sent_logs').insert([{
+        factory_id: currentFactoryId,
+        hotel_id: hotelId,
+        period: sDate + ' ~ ' + eDate,
+        total_amount: totalAmount,
+        supply_price: supplyPrice,
+        vat: vat,
+        sent_at: sentAtVal,
+        is_confirmed: false
+    }]);
+    if (sentErr) { alert('발송 저장 실패: ' + sentErr.message); return; }
 
-        if(!f.sentInvoices) f.sentInvoices = [];
-        const h = f.hotels[hotelId];
+    // invoices is_sent 플래그 DB 업데이트
+    await window.mySupabase.from('invoices')
+        .update({ is_sent: true, report_period: sDate + ' ~ ' + eDate })
+        .eq('factory_id', currentFactoryId)
+        .eq('hotel_id', hotelId)
+        .gte('date', sDate)
+        .lte('date', eDate);
 
-        // [v34 기존 방식] sentInvoices JSON Blob에 기록
-        f.sentInvoices.push({
-            sentAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
-            hotelName: h ? h.name : '알수없음',
-            hotelId: hotelId,
-            period: sDate + ' ~ ' + eDate,
-            totalAmount: totalAmount,
-            supplyPrice: supplyPrice,
-            vat: vat
-        });
-
-        await saveData(); // [v37 수정] Supabase JSON blob에 저장
+    {
         alert('성공적으로 발송되었습니다.');
         closeModal('sendInvoiceModal');
         loadAdminDashboard();
