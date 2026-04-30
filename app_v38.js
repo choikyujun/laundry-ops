@@ -1648,7 +1648,7 @@ window.loadAdminHotelList = async function() {
 
   const { data: hotels, error } = await window.mySupabase
       .from('hotels')
-      .select('id, name, ceo, phone, login_id, contract_type')
+      .select('id, name, ceo, phone, login_id, contract_type, status')
       .eq('factory_id', currentFactoryId)
       .order('name');
 
@@ -1659,8 +1659,12 @@ window.loadAdminHotelList = async function() {
   hotels.forEach(h => {
       const badgeClass = h.contract_type === 'fixed' ? 'badge-fixed' : 'badge-unit';
       const badgeText = h.contract_type === 'fixed' ? '정액제' : '단가제';
-      tbody.innerHTML += `<tr>
-          <td><strong>${h.name}</strong></td>
+      const isActive = (h.status || 'active') === 'active';
+      const statusBadge = isActive
+          ? `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#dcfce7;color:#16a34a;cursor:pointer;" onclick="toggleHotelStatus('${h.id}','inactive')">운영중</span>`
+          : `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#fee2e2;color:#dc2626;cursor:pointer;" onclick="toggleHotelStatus('${h.id}','active')">종&nbsp;료</span>`;
+      tbody.innerHTML += `<tr style="${isActive ? '' : 'opacity:0.5;'}">
+          <td><strong>${h.name}</strong><br>${statusBadge}</td>
           <td style="font-size:13px; color:var(--secondary);">${h.ceo || '-'}<br>${h.phone || '-'}</td>
           <td style="font-size:13px; color:var(--secondary);">${h.login_id}<br>****</td>
           <td><span class="badge ${badgeClass}">${badgeText}</span></td>
@@ -1671,6 +1675,14 @@ window.loadAdminHotelList = async function() {
           </td>
       </tr>`;
   });
+};
+
+window.toggleHotelStatus = async function(hId, newStatus) {
+    const label = newStatus === 'inactive' ? '종료' : '운영중';
+    if (!confirm(`이 거래처를 "${label}" 상태로 변경하시겠습니까?`)) return;
+    const { error } = await window.mySupabase.from('hotels').update({ status: newStatus }).eq('id', hId);
+    if (error) { alert('상태 변경 실패: ' + error.message); return; }
+    if (typeof window.loadAdminHotelList === 'function') window.loadAdminHotelList();
 };
 window.deleteHotel = async function(hId) {
     if(!confirm('삭제?')) return;
@@ -2936,11 +2948,12 @@ window.loadStaffHotelSelect = async function() {
     if(!sel) return;
     sel.innerHTML = '<option value="">-- 거래처 불러오는 중... --</option>';
 
-    // 현재 공장에 등록된 모든 거래처(Hotels)를 DB에서 긁어옵니다
+    // 현재 공장에 등록된 운영중 거래처만 불러오기 (종료 거래처 제외)
     const { data, error } = await window.mySupabase
         .from('hotels')
-        .select('id, name')
+        .select('id, name, status')
         .eq('factory_id', currentFactoryId)
+        .neq('status', 'inactive')
         .order('name');
 
     if (error || !data || data.length === 0) {
