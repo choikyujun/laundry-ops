@@ -1656,6 +1656,10 @@ window.loadAdminHotelList = async function() {
   if (!hotels || hotels.length === 0) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">등록된 거래처가 없습니다.</td></tr>'; return; }
 
   tbody.innerHTML = '';
+  // 상단 안내 문구
+  tbody.innerHTML += `<tr><td colspan="5" style="padding:6px 10px; background:#fff5f5; color:#dc2626; font-size:12px; border-bottom:1px solid #fecaca;">
+      💡 거래처명 옆 <strong>[운영중]</strong> 클릭 시 <strong>종료</strong>로, <strong>[종료]</strong> 클릭 시 <strong>운영중</strong>으로 변경됩니다. 종료된 거래처는 명세서 작성 화면에 표시되지 않습니다.
+  </td></tr>`;
   hotels.forEach(h => {
       const badgeClass = h.contract_type === 'fixed' ? 'badge-fixed' : 'badge-unit';
       const badgeText = h.contract_type === 'fixed' ? '정액제' : '단가제';
