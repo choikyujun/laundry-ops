@@ -1134,6 +1134,44 @@
   <script src="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.js.iife.js"></script>
   <script src="billing_logic.js?v=20260421_1"></script>
   <script src="preview_images.js"></script>
+  <!-- ====================================================
+       src/ 모듈 분리 버전 (app_v38.js 대체)
+       로드 순서: db/client → utils → components → db/realtime → db/queries → auth → features → views
+       ==================================================== -->
+  <!-- 1. Supabase 클라이언트 초기화 -->
+  <!-- <script src="src/db/client.js"></script> -->
+  <!-- 2. 유틸리티 함수 -->
+  <!-- <script src="src/utils/date.js"></script> -->
+  <!-- <script src="src/utils/format.js"></script> -->
+  <!-- <script src="src/utils/helpers.js"></script> -->
+  <!-- 3. 컴포넌트 -->
+  <!-- <script src="src/components/modal.js"></script> -->
+  <!-- <script src="src/components/gallery.js"></script> -->
+  <!-- <script src="src/components/pagination.js"></script> -->
+  <!-- <script src="src/components/notification.js"></script> -->
+  <!-- 4. 실시간 구독 -->
+  <!-- <script src="src/db/realtime.js"></script> -->
+  <!-- 5. DB 쿼리 -->
+  <!-- <script src="src/db/queries/invoices.js"></script> -->
+  <!-- <script src="src/db/queries/factories.js"></script> -->
+  <!-- <script src="src/db/queries/hotels.js"></script> -->
+  <!-- <script src="src/db/queries/staff.js"></script> -->
+  <!-- 6. 인증 -->
+  <!-- <script src="src/auth/login.js"></script> -->
+  <!-- 7. 기능 모듈 -->
+  <!-- <script src="src/features/invoice.js"></script> -->
+  <!-- <script src="src/features/billing.js"></script> -->
+  <!-- <script src="src/features/staff-mgmt.js"></script> -->
+  <!-- <script src="src/features/hotel-mgmt.js"></script> -->
+  <!-- <script src="src/features/dashboard.js"></script> -->
+  <!-- <script src="src/features/sms.js"></script> -->
+  <!-- <script src="src/features/excel.js"></script> -->
+  <!-- 8. 뷰 -->
+  <!-- <script src="src/views/superadmin.js"></script> -->
+  <!-- <script src="src/views/admin.js"></script> -->
+  <!-- <script src="src/views/staff.js"></script> -->
+  <!-- <script src="src/views/hotel.js"></script> -->
+  <!-- 백업: 기존 단일 파일 (비활성화) -->
   <script src="app_v38.js?v=1776780158"></script>
   
   <!-- 푸터 (사업자 정보 - 카카오 비즈니스 심사용) -->
