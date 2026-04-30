@@ -1664,7 +1664,7 @@ window.loadAdminHotelList = async function() {
           ? `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#dcfce7;color:#16a34a;cursor:pointer;" onclick="toggleHotelStatus('${h.id}','inactive')">운영중</span>`
           : `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#fee2e2;color:#dc2626;cursor:pointer;" onclick="toggleHotelStatus('${h.id}','active')">종&nbsp;료</span>`;
       tbody.innerHTML += `<tr style="${isActive ? '' : 'opacity:0.5;'}">
-          <td><strong>${h.name}</strong><br>${statusBadge}</td>
+          <td><strong>${h.name}</strong> ${statusBadge}</td>
           <td style="font-size:13px; color:var(--secondary);">${h.ceo || '-'}<br>${h.phone || '-'}</td>
           <td style="font-size:13px; color:var(--secondary);">${h.login_id}<br>****</td>
           <td><span class="badge ${badgeClass}">${badgeText}</span></td>
