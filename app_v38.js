@@ -3560,8 +3560,16 @@ window.loadSuperAdminDashboard = async function() {
         if (f.status !== 'suspended') operatingFactories++;
     });
 
+    // 이번달 신규 공장 수 계산
+    const newFactoriesCount = validFactories.filter(f => {
+        if (!f.created_at) return false;
+        return f.created_at.substring(0, 7) === curMonth;
+    }).length;
+
     document.getElementById('superTotalRevenue').innerText = totalRev.toLocaleString() + '원';
     document.getElementById('superTotalFactories').innerText = operatingFactories + '개';
+    const superNewEl = document.getElementById('superNewFactories');
+    if (superNewEl) superNewEl.innerText = newFactoriesCount + '개';
 
     // TOP 10 매출 공장 렌더링
     const rankArea = document.getElementById('superFactoryRankingArea');
