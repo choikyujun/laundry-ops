@@ -358,7 +358,7 @@ window.restoreFactoryData = function(input) {
     alert('데이터 복구 중입니다. 잠시만 기다려주세요.');
 
     const reader = new FileReader();
-    reader.onload = function(e) {
+    reader.onload = async function(e) {
         try {
             const restoredData = JSON.parse(e.target.result);
             if (!restoredData.name || !restoredData.adminId) throw new Error("유효하지 않은 데이터 파일입니다.");
@@ -379,8 +379,6 @@ window.restoreFactoryData = function(input) {
             const { error: restoreErr } = await window.mySupabase.from('factories').update(updatePayload).eq('id', currentFactoryId);
             if (restoreErr) throw new Error('DB 복구 실패: ' + restoreErr.message);
             alert('복구가 완료되었습니다.');
-            
-            // [수정] 강제 새로고침 시도
             if (typeof loadAdminDashboard === 'function') loadAdminDashboard();
             if (typeof loadAdminHotelList === 'function') loadAdminHotelList();
             if (typeof loadAdminStaffList === 'function') loadAdminStaffList();
