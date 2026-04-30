@@ -1648,8 +1648,12 @@ window.loadAdminHotelList = function() {
   }
 };
 window.deleteHotel = async function(hId) {
-    await window.fetchFromSupabase(); // [v33 안전 동기화] 최신 데이터 먼저 로드
- if(confirm('삭제?')) { delete platformData.factories[currentFactoryId].hotels[hId]; saveData(); window.loadAdminHotelList(); } };
+    if(!confirm('삭제?')) return;
+    // [v38 SQL-First] DB에서 직접 삭제
+    const { error } = await window.mySupabase.from('hotels').delete().eq('id', hId);
+    if(error) { alert('거래처 삭제 실패: ' + error.message); return; }
+    if(typeof window.loadAdminHotelList === 'function') window.loadAdminHotelList();
+};
 window.loadAdminStaffList = async function() {
     const tbody = document.getElementById('adminStaffList');
     if(!tbody) return;
@@ -1733,8 +1737,12 @@ window.changeStaffPage = function(delta) {
     window.loadAdminStaffList();
 };
 window.deleteStaff = async function(sId) {
-    await window.fetchFromSupabase(); // [v33 안전 동기화] 최신 데이터 먼저 로드
- if(confirm('삭제?')) { delete platformData.factories[currentFactoryId].staffAccounts[sId]; saveData(); window.loadAdminStaffList(); } };
+    if(!confirm('삭제?')) return;
+    // [v38 SQL-First] DB에서 직접 삭제
+    const { error } = await window.mySupabase.from('staff').delete().eq('id', sId);
+    if(error) { alert('직원 삭제 실패: ' + error.message); return; }
+    if(typeof window.loadAdminStaffList === 'function') window.loadAdminStaffList();
+};
 window.openStaffModal = async function() {
   // [추가] 라이트 요금제(레벨 1)일 경우 직원 관리 제한 (비즈니스 이상 필요)
   if (!await window.checkAccess('STAFF_MANAGEMENT', null, '라이트 요금제에서 직원등록은 1명 입니다. [요금제 업그레이드] 해주세요')) return;
