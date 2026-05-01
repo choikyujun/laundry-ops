@@ -42,12 +42,9 @@ window.loadAnalysisTab = async function () {
       `<option value="${h.id}">${h.name}</option>`
     ).join('');
 
-    // 거래처 체크박스 버튼 생성
+    // 거래처 체크박스 버튼 생성 (onclick 인라인)
     const hotelCheckboxes = hotels.map((h, i) =>
-      `<label class="an-hotel-chip" style="--chip-color:${PALETTE[i % PALETTE.length]}">
-        <input type="checkbox" value="${h.id}" style="display:none;">
-        <span>${h.name}</span>
-      </label>`
+      `<div class="an-hotel-chip" data-id="${h.id}" data-name="${h.name.replace(/"/g,'&quot;')}" style="--chip-color:${PALETTE[i % PALETTE.length]}" onclick="this.classList.toggle('selected')">${h.name}</div>`
     ).join('');
 
     root.innerHTML = `
@@ -81,7 +78,8 @@ window.loadAnalysisTab = async function () {
         .an-summary-sub { font-size:10px; color:#94A3B8; margin-top:2px; }
 
         /* 캔버스 */
-        .analysis-canvas-wrap { position:relative; width:100%; height:260px; }
+        .analysis-canvas-wrap { position:relative; width:100%; height:240px; }
+        @media(max-width:768px){ .analysis-canvas-wrap { height:180px; } }
 
         /* 요일 섹션 */
         .analysis-ctrl { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
@@ -98,6 +96,7 @@ window.loadAnalysisTab = async function () {
         <div class="analysis-section-title">
           <h4>📊 거래처별 일별 매출</h4>
           <span class="an-badge">월간</span>
+          <span style="font-size:11px; color:#ef4444;">※ 거래처를 선택한 후 "조회" 버튼을 클릭하세요. 추가로 거래처를 선택하면 중복 비교가 가능합니다</span>
         </div>
 
         <!-- 월 선택 -->
@@ -157,13 +156,7 @@ window.loadAnalysisTab = async function () {
       </div>
     `;
 
-    // 칩 클릭 이벤트
-    document.querySelectorAll('.an-hotel-chip').forEach(chip => {
-      chip.addEventListener('click', () => {
-        chip.classList.toggle('selected');
-        chip.querySelector('input').checked = chip.classList.contains('selected');
-      });
-    });
+
 
     await window._loadChartJs();
 
@@ -203,16 +196,10 @@ function _drawChart(canvasId, config) {
 
 // 전체 선택 / 해제
 window.selectAllHotels = function () {
-  document.querySelectorAll('.an-hotel-chip').forEach(chip => {
-    chip.classList.add('selected');
-    chip.querySelector('input').checked = true;
-  });
+  document.querySelectorAll('.an-hotel-chip').forEach(c => c.classList.add('selected'));
 };
 window.clearAllHotels = function () {
-  document.querySelectorAll('.an-hotel-chip').forEach(chip => {
-    chip.classList.remove('selected');
-    chip.querySelector('input').checked = false;
-  });
+  document.querySelectorAll('.an-hotel-chip').forEach(c => c.classList.remove('selected'));
 };
 
 // ① 일별 매출 차트
@@ -225,8 +212,8 @@ window.renderDailyChart = async function () {
   console.log('[analysis] selected chips:', chips.length);
   if (chips.length === 0) return alert('거래처를 선택해주세요.');
 
-  const selectedIds  = Array.from(chips).map(c => c.querySelector('input').value);
-  const selectedNames = Array.from(chips).map(c => c.querySelector('span').textContent);
+  const selectedIds   = Array.from(chips).map(c => c.dataset.id);
+  const selectedNames = Array.from(chips).map(c => c.dataset.name);
 
   const factoryId = _getFactoryId();
   const [y, mo] = month.split('-').map(Number);
@@ -250,19 +237,15 @@ window.renderDailyChart = async function () {
   if (invErr) return alert('조회 오류: ' + invErr.message);
   if (!invoices) return;
 
-  // 칩 색상 맵
   const allChips = document.querySelectorAll('.an-hotel-chip');
-  const colorMap = {};
-  allChips.forEach(c => {
-    colorMap[c.querySelector('input').value] = getComputedStyle(c).getPropertyValue('--chip-color').trim() || '#00a8e8';
-  });
 
   const datasets = selectedIds.map((hId, i) => {
     const dayMap = {};
     invoices.filter(inv => inv.hotel_id === hId).forEach(inv => {
       dayMap[inv.date] = (dayMap[inv.date] || 0) + Number(inv.total_amount || 0);
     });
-    const color = PALETTE[Array.from(allChips).findIndex(c => c.querySelector('input').value === hId) % PALETTE.length];
+    const chipIdx = Array.from(allChips).findIndex(c => c.dataset.id === hId);
+    const color = PALETTE[(chipIdx >= 0 ? chipIdx : i) % PALETTE.length];
     return {
       label: selectedNames[i],
       data: allDays.map(d => dayMap[d] || 0),
@@ -294,19 +277,50 @@ window.renderDailyChart = async function () {
 
   console.log('[analysis] datasets:', datasets.length, 'days:', allDays.length);
 
+  const isMobile = window.innerWidth < 768;
+  // X축: 일(day)만 표시, 모바일은 5일 간격
+  const xLabels = allDays.map(d => d.slice(8)); // "01"~"31"
+
   _drawChart('canvasDailyRevenue', {
     type: 'line',
-    data: { labels: allDays.map(d => d.slice(5)), datasets },
+    data: { labels: xLabels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 14, padding: 14 } },
-        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()}원` } }
+        legend: { position: 'top', labels: { font: { size: isMobile ? 10 : 11 }, boxWidth: 12, padding: 10 } },
+        tooltip: {
+          callbacks: {
+            title: ctx => `${month.slice(0,7)} - ${ctx[0].label}일`,
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()}원`
+          }
+        }
       },
       scales: {
-        x: { ticks: { font: { size: 10 }, maxRotation: 45 } },
-        y: { ticks: { font: { size: 10 }, callback: v => v >= 10000 ? (v/10000).toFixed(0)+'만' : v.toLocaleString() }, beginAtZero: true }
+        x: {
+          ticks: {
+            font: { size: isMobile ? 9 : 10 },
+            maxRotation: 0,
+            autoSkip: false,
+            callback: (val, idx) => {
+              const day = parseInt(xLabels[idx]);
+              const lastDay = xLabels.length;
+              if (isMobile) {
+                return (day === 1 || day === 11 || day === 21 || idx === lastDay - 1) ? xLabels[idx] : '';
+              }
+              return xLabels[idx];
+            }
+          },
+          grid: { display: false }
+        },
+        y: {
+          ticks: {
+            font: { size: isMobile ? 9 : 10 },
+            callback: v => v >= 10000 ? (v/10000).toFixed(0)+'만' : v.toLocaleString(),
+            maxTicksLimit: 5
+          },
+          beginAtZero: true
+        }
       }
     }
   });
