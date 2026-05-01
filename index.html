@@ -205,7 +205,36 @@
 
 <div id="loginView" class="view active" style="padding:0;">
   <!-- 모바일: 상단 갤러리 -->
-  <div id="galleryMobile" style="display:none; overflow-x:auto; white-space:nowrap; padding:10px 12px 6px 12px; -webkit-overflow-scrolling:touch;">
+  <!-- 모바일 전용: 주요기능 요약 배너 -->
+  <div id="lp-mobile-top" style="display:none; padding:12px 16px 0 16px;">
+    <div style="background:#3D5470; border-radius:12px; padding:14px 16px;">
+      <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px;">
+        <div style="width:7px; height:7px; border-radius:50%; background:#60A5FA; flex-shrink:0;"></div>
+        <span style="font-size:11px; font-weight:600; color:#94A3B8; letter-spacing:0.08em; text-transform:uppercase;">주요 기능</span>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:7px;">
+        <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-left:3px solid #60A5FA; border-radius:8px; padding:8px 10px;">
+          <div style="font-size:11px; font-weight:600; color:#F1F5F9; margin-bottom:2px;">거래명세서 자동 발송</div>
+          <div style="font-size:10px; color:#94A3B8; line-height:1.4;">클릭 한 번으로 즉시 전송</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-left:3px solid #34D399; border-radius:8px; padding:8px 10px;">
+          <div style="font-size:11px; font-weight:600; color:#F1F5F9; margin-bottom:2px;">월정산 자동 생성</div>
+          <div style="font-size:10px; color:#94A3B8; line-height:1.4;">한 달치 자동 취합 발송</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-left:3px solid #F59E0B; border-radius:8px; padding:8px 10px;">
+          <div style="font-size:11px; font-weight:600; color:#F1F5F9; margin-bottom:2px;">실시간 매출 대시보드</div>
+          <div style="font-size:10px; color:#94A3B8; line-height:1.4;">거래처별·월별 한눈에</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-left:3px solid #A78BFA; border-radius:8px; padding:8px 10px;">
+          <div style="font-size:11px; font-weight:600; color:#F1F5F9; margin-bottom:2px;">3자 통합 관리</div>
+          <div style="font-size:10px; color:#94A3B8; line-height:1.4;">공장·직원·호텔 하나로</div>
+        </div>
+      </div>
+      <div style="display:flex; gap:5px; flex-wrap:wrap; margin-top:10px;">
+        <span style="font-size:10px; font-weight:500; background:rgba(96,165,250,0.1); color:#93C5FD; border:1px solid rgba(96,165,250,0.25); border-radius:20px; padding:2px 9px;">종이 명세서 0장</span>
+        <span style="font-size:10px; font-weight:500; background:rgba(96,165,250,0.1); color:#93C5FD; border:1px solid rgba(96,165,250,0.25); border-radius:20px; padding:2px 9px;">업무시간 90% 단축</span>
+      </div>
+    </div>
   </div>
   <!-- 데스크탑: 좌패널 + 로그인 + 우패널 -->
   <div id="loginPageWrapper" style="display:flex; align-items:stretch; justify-content:center; gap:24px; padding:40px 20px;">
