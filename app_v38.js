@@ -111,6 +111,7 @@ window.initApp = async function() {
         currentFactoryId = adminAccessId;
         const { data: f } = await window.mySupabase.from('factories').select('name').eq('id', currentFactoryId).maybeSingle();
         if (f) {
+            localStorage.setItem('currentFactoryId', currentFactoryId); // 분석탭 등에서 참조 가능하도록 저장
             localStorage.removeItem('adminAccessFactoryId'); // 1회용 소진
             showView('adminView', f.name + ' - 대표');
             setupRealtimeSubscription(); // [수정] 바로가기 시에도 실시간 구독 연결
@@ -461,6 +462,7 @@ window.switchTab = async function(el, tabId) {
   
   // 탭 전환 시 데이터 로드 함수 명시적 호출
   if(tabId === 'adminStats') await window.loadAdminDashboard();
+  if(tabId === 'adminAnalysis') { if(typeof window.loadAnalysisTab === 'function') window.loadAnalysisTab(); }
   if(tabId === 'adminHotel') window.loadAdminHotelList();
   if(tabId === 'adminStaff') window.loadAdminStaffList();
   if(tabId === 'adminSent') window.loadAdminSentList();

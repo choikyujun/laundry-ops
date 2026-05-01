@@ -18,6 +18,10 @@ window.loadAnalysisTab = async function () {
     return;
   }
 
+  // 항상 새로 렌더링 (다른 공장 로그인 시 캐시 방지)
+  root.innerHTML = '';
+  window._invoiceAnalysisFactoryId = null;
+
   root.innerHTML = `<div style="color:#94A3B8; padding:40px; text-align:center;">데이터 로딩 중...</div>`;
 
   try {
