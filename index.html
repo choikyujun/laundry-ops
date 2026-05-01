@@ -152,13 +152,11 @@
 <style>
 /* ===== 로그인 페이지 사이드패널 ===== */
 .lp-side {
-  flex: 1;
-  background: #1E293B;
+  background: #3D5470;
   padding: 32px 22px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  min-width: 0;
 }
 .lp-side-logo { display:flex; align-items:center; gap:8px; margin-bottom:2px; }
 .lp-side-dot { width:8px; height:8px; border-radius:50%; background:#60A5FA; flex-shrink:0; }
@@ -210,10 +208,10 @@
   <div id="galleryMobile" style="display:none; overflow-x:auto; white-space:nowrap; padding:10px 12px 6px 12px; -webkit-overflow-scrolling:touch;">
   </div>
   <!-- 데스크탑: 좌패널 + 로그인 + 우패널 -->
-  <div id="loginPageWrapper" style="display:flex; align-items:stretch; justify-content:center; gap:0; padding:40px 20px 20px;">
+  <div id="loginPageWrapper" style="display:flex; align-items:stretch; justify-content:center; gap:24px; padding:40px 20px;">
 
     <!-- 좌측 사이드패널: 주요 기능 -->
-    <div id="lp-side-left" class="lp-side" style="margin-right:60px;">
+    <div id="lp-side-left" class="lp-side" style="width:260px; flex:none; border-radius:14px;">
       <div>
         <div class="lp-side-logo"><div class="lp-side-dot"></div><span class="lp-side-title">주요 기능</span></div>
         <p class="lp-side-desc" style="margin-top:6px;">세탁공장 업무를 자동화하는 스마트 정산 플랫폼</p>
@@ -249,7 +247,7 @@
     </div>
 
     <!-- 기존 로그인 박스 (변경 없음) -->
-    <div class="login-box" style="margin:0; flex-shrink:0;">
+    <div class="login-box" style="margin:0; flex-shrink:0; width:380px; max-width:380px; align-self:stretch; display:flex; flex-direction:column; justify-content:center;">
       <h3>Laundry Ops</h3>
       <p style="text-align:center; color:var(--secondary); font-size:13px; margin:-6px 0 10px 0; font-weight:500;">세탁공장 통합 운영 관리 플랫폼</p>
       <div style="background:#f8fafc; border:1px solid var(--border); border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:12.5px; color:#475569; line-height:1.7;">
@@ -284,7 +282,7 @@
     </div><!-- /login-box -->
 
     <!-- 우측 사이드패널: 후기 + 혜택 -->
-    <div id="lp-side-right" class="lp-side" style="margin-left:60px;">
+    <div id="lp-side-right" class="lp-side" style="width:260px; flex:none; border-radius:14px;">
       <div>
         <div class="lp-side-logo"><div class="lp-side-dot"></div><span class="lp-side-title">실제 후기</span></div>
         <p class="lp-side-desc" style="margin-top:6px;">전국 세탁공장 대표님들의 생생한 사용 경험</p>
@@ -1299,7 +1297,7 @@
   
   <!-- 푸터 (사업자 정보 - 카카오 비즈니스 심사용) -->
   <div style="margin-top: 40px; padding: 20px; text-align: center; color: #64748b; font-size: 12px; line-height: 1.6; background: #f8fafc; border-top: 1px solid #e2e8f0;">
-      <strong>Laundry Ops (CEgo)</strong> | 상호명: 진성크리닝 | 대표자: 최규준 | 사업자등록번호: 128-40-31753<br>
+      <strong>Laundry Ops (CEgo)</strong> | 상호명: (주)쎄고 | 대표자: 최규준 | 사업자등록번호: 128-40-31753<br>
       사업장: 경기도 파주시 장릉로51번길 35-27 | 고객센터: 010-5104-1648
   </div>
 </body>
