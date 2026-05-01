@@ -183,6 +183,38 @@ const PALETTE = [
   '#38BDF8','#4ADE80','#FBBF24','#C084FC','#F472B6',
 ];
 
+const DOW_KR = ['일','월','화','수','목','금','토'];
+
+// 한국 공휴일 (YYYY-MM-DD)
+const KR_HOLIDAYS = new Set([
+  // 2025
+  '2025-01-01','2025-01-28','2025-01-29','2025-01-30',
+  '2025-03-01','2025-05-05','2025-05-06','2025-06-06',
+  '2025-08-15','2025-10-03','2025-10-06','2025-10-07','2025-10-08','2025-10-09',
+  '2025-12-25',
+  // 2026
+  '2026-01-01','2026-02-17','2026-02-18','2026-02-19',
+  '2026-03-01','2026-03-02','2026-05-05','2026-05-25',
+  '2026-06-06','2026-08-15','2026-08-17',
+  '2026-09-24','2026-09-25','2026-09-26',
+  '2026-10-03','2026-10-09','2026-12-25',
+]);
+
+function _getDayType(dateStr) {
+  // 0: 평일, 1: 토요일, 2: 일요일/공휴일
+  if (KR_HOLIDAYS.has(dateStr)) return 2;
+  const dow = new Date(dateStr).getDay();
+  if (dow === 0) return 2;
+  if (dow === 6) return 1;
+  return 0;
+}
+function _dayColor(dateStr) {
+  const t = _getDayType(dateStr);
+  if (t === 2) return '#ef4444';
+  if (t === 1) return '#3b82f6';
+  return '#334155';
+}
+
 const _chartInstances = {};
 function _drawChart(canvasId, config) {
   if (_chartInstances[canvasId]) {
@@ -278,20 +310,53 @@ window.renderDailyChart = async function () {
   console.log('[analysis] datasets:', datasets.length, 'days:', allDays.length);
 
   const isMobile = window.innerWidth < 768;
-  // X축: 일(day)만 표시, 모바일은 5일 간격
   const xLabels = allDays.map(d => d.slice(8)); // "01"~"31"
+  const dowLabels = allDays.map(d => DOW_KR[new Date(d).getDay()]);
+
+  // 날짜+요일 커스텀 렌더 플러그인
+  const xDowPlugin = {
+    id: 'xDowLabels',
+    afterDraw(chart) {
+      const { ctx, scales: { x, y } } = chart;
+      const ticks = x.ticks;
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      const fontSize = isMobile ? 8 : 9;
+      ctx.font = `${fontSize}px sans-serif`;
+      ticks.forEach((tick, i) => {
+        const idx = tick.value;
+        const dateStr = allDays[idx];
+        if (!dateStr) return;
+        const show = isMobile
+          ? (parseInt(xLabels[idx])===1 || parseInt(xLabels[idx])===11 || parseInt(xLabels[idx])===21 || idx===allDays.length-1)
+          : true;
+        if (!show) return;
+        const xPos = x.getPixelForTick(i);
+        const yPos = y.bottom + (isMobile ? 20 : 22);
+        ctx.fillStyle = _dayColor(dateStr);
+        ctx.fillText(dowLabels[idx], xPos, yPos);
+      });
+      ctx.restore();
+    }
+  };
 
   _drawChart('canvasDailyRevenue', {
     type: 'line',
     data: { labels: xLabels, datasets },
+    plugins: [xDowPlugin],
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: { padding: { bottom: isMobile ? 14 : 16 } },
       plugins: {
         legend: { position: 'top', labels: { font: { size: isMobile ? 10 : 11 }, boxWidth: 12, padding: 10 } },
         tooltip: {
           callbacks: {
-            title: ctx => `${month.slice(0,7)} - ${ctx[0].label}일`,
+            title: ctx => {
+              const idx = ctx[0].dataIndex;
+              return `${allDays[idx]} (${dowLabels[idx]})`;
+            },
             label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()}원`
           }
         }
@@ -300,13 +365,16 @@ window.renderDailyChart = async function () {
         x: {
           ticks: {
             font: { size: isMobile ? 9 : 10 },
+            color: (ctx) => {
+              const idx = ctx.index;
+              return allDays[idx] ? _dayColor(allDays[idx]) : '#334155';
+            },
             maxRotation: 0,
             autoSkip: false,
             callback: (val, idx) => {
               const day = parseInt(xLabels[idx]);
-              const lastDay = xLabels.length;
               if (isMobile) {
-                return (day === 1 || day === 11 || day === 21 || idx === lastDay - 1) ? xLabels[idx] : '';
+                return (day===1||day===11||day===21||idx===allDays.length-1) ? xLabels[idx] : '';
               }
               return xLabels[idx];
             }
