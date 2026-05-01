@@ -1720,7 +1720,7 @@ window.loadAdminStaffList = async function() {
     if(!activityBody) return;
     
     // pagination for staff activity list
-    const itemsPerPage = 10;
+    const itemsPerPage = 50;
     window.currentStaffPage = window.currentStaffPage || 1;
     const startIdx = (window.currentStaffPage - 1) * itemsPerPage;
     const endIdx = startIdx + itemsPerPage - 1;
@@ -4590,7 +4590,7 @@ window.loadAdminRecentInvoices = async function(returnList = false) {
         if (eDate) query = query.lte('date', eDate);
         if (hotelFilter && hotelFilter !== 'all') query = query.eq('hotel_id', hotelFilter);
 
-        const { data, error } = await query.order('date', { ascending: false }).limit(100);
+        const { data, error } = await query.order('date', { ascending: false }).limit(2000);
 
         if (error) {
             tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:red;">에러: ${error.message}</td></tr>`;
@@ -4598,24 +4598,35 @@ window.loadAdminRecentInvoices = async function(returnList = false) {
             return;
         }
 
-        
         const filteredData = data ? data.filter(inv => !(inv.staff_name && inv.staff_name.startsWith('관리자(차감)'))) : [];
         window._lastInvoiceData = filteredData;
         if (filteredData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">작성된 명세서가 없습니다.</td></tr>';
-        _isInvoiceLoading = false;
-        if (returnList) return [];
-        return;
-    }
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">작성된 명세서가 없습니다.</td></tr>';
+            const pgDiv = document.getElementById('adminInvoicePagination');
+            if (pgDiv) pgDiv.innerHTML = '';
+            _isInvoiceLoading = false;
+            if (returnList) return [];
+            return;
+        }
+
+        // 50개씩 페이징
+        const INV_PER_PAGE = 50;
+        if (!window._invoicePage || window._invoicePageReset) {
+            window._invoicePage = 1;
+            window._invoicePageReset = false;
+        }
+        const totalPages = Math.ceil(filteredData.length / INV_PER_PAGE);
+        if (window._invoicePage > totalPages) window._invoicePage = totalPages;
+        const startIdx = (window._invoicePage - 1) * INV_PER_PAGE;
+        const pageData = filteredData.slice(startIdx, startIdx + INV_PER_PAGE);
 
         tbody.innerHTML = '';
-        filteredData.forEach(inv => {
+        pageData.forEach(inv => {
             const hName = inv.hotels ? inv.hotels.name : '알수없음(거래처삭제됨)';
             const cType = (inv.hotels && inv.hotels.contract_type === 'fixed') ? '정액제' : '단가제';
-            const statusBadge = inv.is_sent 
-                ? '<span class="badge" style="background:var(--success);">발송완료</span>' 
+            const statusBadge = inv.is_sent
+                ? '<span class="badge" style="background:var(--success);">발송완료</span>'
                 : '<span class="badge" style="background:var(--secondary);">작성됨</span>';
-
             tbody.innerHTML += `
             <tr>
                 <td>${inv.date}</td>
@@ -4629,6 +4640,26 @@ window.loadAdminRecentInvoices = async function(returnList = false) {
                 </td>
             </tr>`;
         });
+
+        // 페이징 버튼
+        const pgDiv = document.getElementById('adminInvoicePagination');
+        if (pgDiv) {
+            if (totalPages <= 1) { pgDiv.innerHTML = ''; }
+            else {
+                const cur = window._invoicePage;
+                let html = `<div style="display:flex; align-items:center; justify-content:center; gap:4px; margin-top:12px; flex-wrap:wrap;">`;
+                html += `<span style="font-size:12px; color:#64748b; margin-right:6px;">${filteredData.length}건 / ${totalPages}페이지</span>`;
+                html += `<button class="btn btn-neutral" style="padding:4px 10px; font-size:12px;" ${cur===1?'disabled':''} onclick="window._invoicePage=${cur-1}; window.loadAdminRecentInvoices()">◀</button>`;
+                let s = Math.max(1, cur-3), e = Math.min(totalPages, s+6);
+                if (e-s < 6) s = Math.max(1, e-6);
+                for (let i=s; i<=e; i++) {
+                    html += `<button class="btn" style="padding:4px 8px; font-size:12px; ${i===cur ? 'background:var(--primary);color:white;' : 'background:#f1f5f9; color:#334155; border:1px solid #e2e8f0;'}" onclick="window._invoicePage=${i}; window.loadAdminRecentInvoices()">${i}</button>`;
+                }
+                html += `<button class="btn btn-neutral" style="padding:4px 10px; font-size:12px;" ${cur===totalPages?'disabled':''} onclick="window._invoicePage=${cur+1}; window.loadAdminRecentInvoices()">▶</button>`;
+                html += `</div>`;
+                pgDiv.innerHTML = html;
+            }
+        }
     } catch (e) {
         console.error(e);
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:red;">에러: ${e.message}</td></tr>`;
