@@ -124,7 +124,7 @@
       }, 100);
   };
 </script>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20260509">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.css"/>
 </head>
 <body>
@@ -487,7 +487,7 @@
     <!-- 탭 -->
     <div class="tabs">
         <div class="tab-item active" onclick="switchTab(this, 'adminStats')">📊 매출지표</div>
-        <div class="tab-item" onclick="switchTab(this, 'adminAnalysis')">📈 매출비교분석</div>
+        <div class="tab-item" onclick="switchTab(this, 'adminAnalysis'); window.loadAnalysisTab && window.loadAnalysisTab();">📈 매출비교분석</div>
         <div class="tab-item" id="tour-tab-hotel" onclick="switchTab(this, 'adminHotel')">🤝 거래처</div>
         <div class="tab-item" id="tour-tab-staff" onclick="switchTab(this, 'adminStaff')">👕 직원/발행</div>
         <div class="tab-item" onclick="switchTab(this, 'adminSent')">📨 발송내역</div>
@@ -504,16 +504,16 @@
         </div>
         <div class="chart-container" style="margin-top:14px;">
             <div style="font-weight:700; margin-bottom:10px;">🏆 <span id="rankingTitle">매출 TOP 10</span></div>
-            <div id="adminTopRankingArea" style="font-size:13px;"></div>
+            <div id="adminTopRankingArea" style="font-size:13px; max-height:320px; overflow-y:auto; -webkit-overflow-scrolling:touch;"></div>
         </div>
         <div class="chart-container" style="margin-top:14px;">
             <div style="font-weight:700; margin-bottom:10px;">📅 거래명세서 목록</div>
             <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;">
                 <select id="adminStatsHotelFilter" style="padding:8px; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc; width:100%; font-size:13px; box-sizing:border-box;" onchange="handleAdminFilterChange()"></select>
                 <div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">
-                    <input type="date" id="adminStatsStartDate" style="padding:8px; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc; font-size:13px; flex:1; min-width:130px; box-sizing:border-box;" onchange="window._invoicePage=1; loadAdminRecentInvoices()">
+                    <input type="date" id="adminStatsStartDate" style="padding:8px; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc; font-size:13px; flex:1; min-width:130px; box-sizing:border-box;" onchange="loadAdminRecentInvoices()">
                     <span style="font-size:12px;">~</span>
-                    <input type="date" id="adminStatsEndDate" style="padding:8px; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc; font-size:13px; flex:1; min-width:130px; box-sizing:border-box;" onchange="window._invoicePage=1; loadAdminRecentInvoices()">
+                    <input type="date" id="adminStatsEndDate" style="padding:8px; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc; font-size:13px; flex:1; min-width:130px; box-sizing:border-box;" onchange="loadAdminRecentInvoices()">
                 </div>
                 <div style="display:flex; gap:6px;">
                     <button class="btn btn-save" onclick="exportInvoicesToPDF()" style="background:var(--danger); flex:1; padding:10px; font-size:13px; border:none; border-radius:6px;">🖨️ 인쇄</button>
@@ -522,7 +522,6 @@
             </div>
             <div class="table-scroll-wrap">
                 <table class="admin-table" style="min-width:480px;"><thead><tr><th>일자</th><th>거래처명</th><th>총 금액</th><th>계약</th><th>상태</th><th>관리</th></tr></thead><tbody id="adminRecentInvoiceList"></tbody></table>
-                <div id="adminInvoicePagination"></div>
             </div>
             <div id="adminPagination"></div>
         </div>
@@ -1277,8 +1276,8 @@
 
 
   <script src="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.js.iife.js"></script>
-  <script src="billing_logic.js?v=20260421_1"></script>
-  <script src="preview_images.js"></script>
+  <script src="billing_logic.js?v=20260509"></script>
+  <script src="preview_images.js?v=20260509"></script>
   <!-- ====================================================
        src/ 모듈 분리 버전 (app_v38.js 대체)
        로드 순서: db/client → utils → components → db/realtime → db/queries → auth → features → views
@@ -1317,12 +1316,12 @@
   <!-- <script src="src/views/staff.js"></script> -->
   <!-- <script src="src/views/hotel.js"></script> -->
   <!-- 백업: 기존 단일 파일 (비활성화) -->
-  <script src="app_v38.js?v=1777544357"></script>
-  <script src="analysis/analysis.js?v=20260501"></script>
+  <script src="app_v38.js?v=20260509"></script>
+  <script src="analysis/analysis.js?v=20260509"></script>
   
   <!-- 푸터 (사업자 정보 - 카카오 비즈니스 심사용) -->
   <div style="margin-top: 40px; padding: 20px; text-align: center; color: #64748b; font-size: 12px; line-height: 1.6; background: #f8fafc; border-top: 1px solid #e2e8f0;">
-      <strong>Laundry Ops (CEgo)</strong> | 상호명: (주)쎄고 | 대표자: 최규준 | 사업자등록번호: 673-86-01591<br>
+      <strong>Laundry Ops (CEgo)</strong> | 상호명: (주)쎄고 | 대표자: 최규준 | 사업자등록번호: 128-40-31753<br>
       사업장: 경기도 파주시 장릉로51번길 35-27 | 고객센터: 010-5104-1648
   </div>
 </body>

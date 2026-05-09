@@ -111,7 +111,6 @@ window.initApp = async function() {
         currentFactoryId = adminAccessId;
         const { data: f } = await window.mySupabase.from('factories').select('name').eq('id', currentFactoryId).maybeSingle();
         if (f) {
-            localStorage.setItem('currentFactoryId', currentFactoryId); // 분석탭 등에서 참조 가능하도록 저장
             localStorage.removeItem('adminAccessFactoryId'); // 1회용 소진
             showView('adminView', f.name + ' - 대표');
             setupRealtimeSubscription(); // [수정] 바로가기 시에도 실시간 구독 연결
@@ -462,7 +461,6 @@ window.switchTab = async function(el, tabId) {
   
   // 탭 전환 시 데이터 로드 함수 명시적 호출
   if(tabId === 'adminStats') await window.loadAdminDashboard();
-  if(tabId === 'adminAnalysis') { if(typeof window.loadAnalysisTab === 'function') window.loadAnalysisTab(); }
   if(tabId === 'adminHotel') window.loadAdminHotelList();
   if(tabId === 'adminStaff') window.loadAdminStaffList();
   if(tabId === 'adminSent') window.loadAdminSentList();
@@ -952,9 +950,18 @@ window.loadStaffDashboard = async function() {
 };
 
 window.saveAndPrintInvoice = async function() {
+    // [중복 저장 방지] 버튼 즉시 비활성화
+    const saveBtn = document.getElementById('btnSaveInvoice');
+    if (saveBtn) {
+        if (saveBtn.dataset.saving === 'true') return; // 이미 저장 중이면 무시
+        saveBtn.dataset.saving = 'true';
+        saveBtn.disabled = true;
+        saveBtn.innerText = '저장 중...';
+    }
+    try {
     const hId = document.getElementById('staffHotelSelect').value;
     const date = document.getElementById('invoiceDate').value;
-    if (!hId || !date) return;
+    if (!hId || !date) { if(saveBtn) { saveBtn.dataset.saving=''; saveBtn.disabled=false; saveBtn.innerText='💾 저장하기'; } return; }
 
     // 품목 수집 (item-price 셀에서 가격 읽기)
     const items = [];
@@ -1028,6 +1035,18 @@ window.saveAndPrintInvoice = async function() {
     if (badge) badge.style.display = 'none';
 
     if (typeof window.loadStaffInvoiceList === 'function') window.loadStaffInvoiceList();
+
+    } catch(e) {
+        console.error('[saveAndPrintInvoice 오류]', e);
+        alert('저장 중 오류가 발생했습니다: ' + e.message);
+    } finally {
+        // 저장 완료 또는 오류 시 버튼 복원
+        if (saveBtn) {
+            saveBtn.dataset.saving = '';
+            saveBtn.disabled = false;
+            saveBtn.innerText = '💾 저장하기';
+        }
+    }
 };
 
 window.printReport = function(elementId) {
@@ -1231,16 +1250,18 @@ window.updateTrendChartOnly = async function() {
 
   // Update Ranking Title dynamically
   const rankingTitle = document.getElementById('rankingTitle');
-  if(rankingTitle) rankingTitle.innerText = `${curMonth.replace('-', '-')} 거래처 매출 TOP 10`;
+  if(rankingTitle) rankingTitle.innerText = `${curMonth.replace('-', '-')} 거래처 매출 TOP`;
 
   // **FIX APPLIED HERE: Ranking uses allSalesForRanking, independent of filterId**
   const rankingArea = document.getElementById('adminTopRankingArea');
   if(rankingArea) {
       rankingArea.innerHTML = '';
+      const rankingSorted = Object.entries(allSalesForRanking).sort((a,b) => b[1]-a[1]);
       rankingArea.innerHTML = '<table class="admin-table"><thead><tr><th>순위</th><th>공장명</th><th>이번 달 매출</th></tr></thead><tbody>' +
-      Object.entries(allSalesForRanking).sort((a,b) => b[1]-a[1]).slice(0, 10).map((f, i) => `
+      rankingSorted.map((f, i) => `
           <tr><td>${i+1}위</td><td>${f[0]}</td><td style="text-align:right; font-weight:700; color:var(--primary);">${f[1].toLocaleString()}원</td></tr>
       `).join('') + '</tbody></table>';
+      // 스크롤은 HTML에서 고정 처리 (max-height:320px, overflow-y:auto)
   }
 
   window.updateRevenueTrendChart(monthlyTrend, filterId === 'all' ? '전체' : (f.hotels[filterId] ? f.hotels[filterId].name : '선택 거래처'));
@@ -1720,59 +1741,73 @@ window.loadAdminStaffList = async function() {
     // Load recent invoices (직원/발행 화면 하단 발행 현황 목록)
     const activityBody = document.getElementById('adminStaffActivityList');
     if(!activityBody) return;
-    
-    // pagination for staff activity list
-    const itemsPerPage = 50;
-    window.currentStaffPage = window.currentStaffPage || 1;
-    const startIdx = (window.currentStaffPage - 1) * itemsPerPage;
-    const endIdx = startIdx + itemsPerPage - 1;
 
-    // [수정] 관리자(차감) 명세서는 직원 발행 현황에서도 보이지 않도록 필터링
-    const { data: invoices, error: iErr, count } = await window.mySupabase.from('invoices')
-        .select('*, hotels(name)', { count: 'exact' })
+    const STAFF_ACTIVITY_PAGE_SIZE = 50;
+    window.currentStaffPage = 1; // 매번 첫 페이지부터
+
+    // 전체 데이터 로드 후 프론트 페이징
+    const { data: invoices, error: iErr } = await window.mySupabase.from('invoices')
+        .select('id, date, total_amount, staff_name, created_at, hotels(name)')
         .eq('factory_id', currentFactoryId)
-        .order('created_at', { ascending: false })
-        .limit(itemsPerPage * 3); // 차감이 포함될 수 있으므로 약간 넉넉하게 불러온 후 프론트에서 필터링하여 페이징
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
 
-    if(iErr) { activityBody.innerHTML = `<tr><td colspan="4" style="color:red;">에러: ${iErr.message}</td></tr>`; }
-    else {
-        const filteredInvoices = invoices ? invoices.filter(inv => !(inv.staff_name && inv.staff_name.startsWith('관리자(차감)'))) : [];
-        const pageInvoices = filteredInvoices.slice(startIdx, endIdx + 1);
-        
-        if (pageInvoices.length === 0) {
+    if(iErr) {
+        activityBody.innerHTML = `<tr><td colspan="4" style="color:red;">에러: ${iErr.message}</td></tr>`;
+        return;
+    }
+
+    const filteredInvoices = invoices
+        ? invoices.filter(inv => !(inv.staff_name && inv.staff_name.startsWith('관리자(차감)')))
+        : [];
+
+    window._staffActivityAllData = filteredInvoices;
+
+    window.renderStaffActivityPage = function() {
+        const total = window._staffActivityAllData.length;
+        const totalPages = Math.ceil(total / STAFF_ACTIVITY_PAGE_SIZE);
+        const start = (window.currentStaffPage - 1) * STAFF_ACTIVITY_PAGE_SIZE;
+        const pageData = window._staffActivityAllData.slice(start, start + STAFF_ACTIVITY_PAGE_SIZE);
+
+        if (pageData.length === 0) {
             activityBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">발행된 명세서가 없습니다.</td></tr>';
         } else {
             activityBody.innerHTML = '';
-            pageInvoices.forEach(inv => {
-            const displaySum = inv.total_amount || 0;
-            const hName = (inv.hotels && inv.hotels.name) ? inv.hotels.name : '알수없음';
-            activityBody.innerHTML += `<tr>
-                <td style="font-size:12px;">${inv.date}</td>
-                <td>${inv.staff_name || '직원'}</td>
-                <td><strong>${hName}</strong></td>
-                <td style="text-align:right;">${displaySum.toLocaleString()}원</td>
-            </tr>`;
-        });
-        
-        // (페이징 버튼 렌더링 로직 유지)
-        const paginationDiv = document.getElementById('adminStaffPagination');
-        if(paginationDiv && count) {
-            const totalPages = Math.ceil(count / itemsPerPage);
-            let pageHtml = '<div style="margin-top:10px; text-align:center;">';
-            for (let i = 1; i <= totalPages; i++) {
-                if (i === window.currentStaffPage) {
-                    pageHtml += `<button style="margin:2px; padding:4px 8px; font-size:12px; background:var(--primary); color:white; border:none; border-radius:4px;">${i}</button>`;
-                } else {
-                    pageHtml += `<button style="margin:2px; padding:4px 8px; font-size:12px; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer;" onclick="window.currentStaffPage=${i}; window.loadAdminStaffList()">${i}</button>`;
+            pageData.forEach(inv => {
+                const displaySum = inv.total_amount || 0;
+                const hName = (inv.hotels && inv.hotels.name) ? inv.hotels.name : '알수없음';
+                    const createdAt = inv.created_at ? new Date(inv.created_at) : null;
+                let timeStr = inv.date;
+                if (createdAt) {
+                    const kst = new Date(createdAt.getTime() + 9 * 60 * 60 * 1000);
+                    const mm = String(kst.getUTCMonth() + 1).padStart(2, '0');
+                    const dd = String(kst.getUTCDate()).padStart(2, '0');
+                    const hh = String(kst.getUTCHours()).padStart(2, '0');
+                    const min = String(kst.getUTCMinutes()).padStart(2, '0');
+                    timeStr = `${mm}-${dd} ${hh}:${min}`;
                 }
-            }
-            pageHtml += '</div>';
-            paginationDiv.innerHTML = pageHtml;
-        } else if(paginationDiv) {
-            paginationDiv.innerHTML = '';
+                activityBody.innerHTML += `<tr>
+                    <td style="font-size:12px;">${timeStr}</td>
+                    <td>${inv.staff_name || '직원'}</td>
+                    <td><strong>${hName}</strong></td>
+                    <td style="text-align:right;">${displaySum.toLocaleString()}원</td>
+                </tr>`;
+            });
         }
-    } // closes inner else
-  } // closes outer else
+
+        const paginationDiv = document.getElementById('adminStaffPagination');
+        if (paginationDiv) {
+            if (totalPages <= 1) { paginationDiv.innerHTML = ''; return; }
+            paginationDiv.innerHTML = `
+            <div style="display:flex; justify-content:center; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap;">
+                <button class="btn btn-neutral" style="padding:6px 14px; font-size:13px;" onclick="window.currentStaffPage=Math.max(1,window.currentStaffPage-1); window.renderStaffActivityPage();" ${window.currentStaffPage <= 1 ? 'disabled' : ''}>◀ 이전</button>
+                <span style="font-size:13px; color:#555;">${window.currentStaffPage} / ${totalPages} 페이지 (총 ${total}건)</span>
+                <button class="btn btn-neutral" style="padding:6px 14px; font-size:13px;" onclick="window.currentStaffPage=Math.min(${totalPages},window.currentStaffPage+1); window.renderStaffActivityPage();" ${window.currentStaffPage >= totalPages ? 'disabled' : ''}>다음 ▶</button>
+            </div>`;
+        }
+    };
+
+    window.renderStaffActivityPage();
 };
 
 window.changeStaffPage = function(delta) {
@@ -3115,7 +3150,9 @@ window.loadStaffInvoiceList = async function() {
     // [수정] .neq() 쿼리에서 발생하는 에러일 수 있으므로, 서버 쿼리는 전체를 가져오고 프론트에서 필터링
     if (searchDate) query = query.eq('date', searchDate);
 
-    const { data, error } = await query.order('date', { ascending: false });
+    const { data, error } = await query
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
 
     if (error || !data) {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--danger);">오류: ${error ? error.message : '알 수 없는 오류'}</td></tr>`;
@@ -4568,10 +4605,16 @@ window.OLD_sendInvoicesToClient_0 = async function() {
     window.openSendInvoiceModal();
 };
 let isInvoiceLoading = false;
+// [v38 페이징] 관리자 명세서 목록 페이징 상태
+let _adminInvoiceAllData = [];
+let _adminInvoicePage = 1;
+const ADMIN_INVOICE_PAGE_SIZE = 50;
+
 window.loadAdminRecentInvoices = async function(returnList = false) {
     if (_isInvoiceLoading) return; // 중복 호출 방지
     _isInvoiceLoading = true;
-    
+    _adminInvoicePage = 1; // 필터 변경 시 첫 페이지로
+
     const tbody = document.getElementById('adminRecentInvoiceList');
     if(!tbody) { _isInvoiceLoading = false; return; }
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">명세서를 불러오는 중...</td></tr>';
@@ -4581,18 +4624,18 @@ window.loadAdminRecentInvoices = async function(returnList = false) {
         const eDate = document.getElementById('adminStatsEndDate') ? document.getElementById('adminStatsEndDate').value : '';
         const hotelFilter = document.getElementById('adminStatsHotelFilter') ? document.getElementById('adminStatsHotelFilter').value : 'all';
 
-        // [수정] 관리자(차감) 명세서는 목록 화면에서 안 보이게 필터링
         let query = window.mySupabase
             .from('invoices')
-            .select('id, date, total_amount, is_sent, staff_name, hotel_id, hotels ( name, contract_type )')
-            .eq('factory_id', currentFactoryId)
-            ;
+            .select('id, date, created_at, total_amount, is_sent, staff_name, hotel_id, hotels ( name, contract_type )')
+            .eq('factory_id', currentFactoryId);
 
         if (sDate) query = query.gte('date', sDate);
         if (eDate) query = query.lte('date', eDate);
         if (hotelFilter && hotelFilter !== 'all') query = query.eq('hotel_id', hotelFilter);
 
-        const { data, error } = await query.order('date', { ascending: false }).limit(2000);
+        const { data, error } = await query
+            .order('date', { ascending: false })
+            .order('created_at', { ascending: false });
 
         if (error) {
             tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:red;">에러: ${error.message}</td></tr>`;
@@ -4602,73 +4645,86 @@ window.loadAdminRecentInvoices = async function(returnList = false) {
 
         const filteredData = data ? data.filter(inv => !(inv.staff_name && inv.staff_name.startsWith('관리자(차감)'))) : [];
         window._lastInvoiceData = filteredData;
+        _adminInvoiceAllData = filteredData;
+
         if (filteredData.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">작성된 명세서가 없습니다.</td></tr>';
-            const pgDiv = document.getElementById('adminInvoicePagination');
-            if (pgDiv) pgDiv.innerHTML = '';
+            const pg = document.getElementById('adminPagination');
+            if (pg) pg.innerHTML = '';
             _isInvoiceLoading = false;
             if (returnList) return [];
             return;
         }
 
-        // 50개씩 페이징
-        const INV_PER_PAGE = 50;
-        if (!window._invoicePage || window._invoicePageReset) {
-            window._invoicePage = 1;
-            window._invoicePageReset = false;
-        }
-        const totalPages = Math.ceil(filteredData.length / INV_PER_PAGE);
-        if (window._invoicePage > totalPages) window._invoicePage = totalPages;
-        const startIdx = (window._invoicePage - 1) * INV_PER_PAGE;
-        const pageData = filteredData.slice(startIdx, startIdx + INV_PER_PAGE);
+        window.renderAdminInvoicePage();
 
-        tbody.innerHTML = '';
-        pageData.forEach(inv => {
-            const hName = inv.hotels ? inv.hotels.name : '알수없음(거래처삭제됨)';
-            const cType = (inv.hotels && inv.hotels.contract_type === 'fixed') ? '정액제' : '단가제';
-            const statusBadge = inv.is_sent
-                ? '<span class="badge" style="background:var(--success);">발송완료</span>'
-                : '<span class="badge" style="background:var(--secondary);">작성됨</span>';
-            tbody.innerHTML += `
-            <tr>
-                <td>${inv.date}</td>
-                <td style="font-weight:700; color:var(--primary);">${hName}</td>
-                <td style="text-align:right; font-weight:700;">${inv.total_amount.toLocaleString()}원</td>
-                <td>${cType}</td>
-                <td>${statusBadge}</td>
-                <td>
-                    <button class="btn btn-neutral" style="padding:4px 8px; font-size:11px; margin-right:5px;" onclick="viewInvoiceDetail('${inv.id}')">보기</button>
-                    <button class="btn btn-danger" style="padding:4px 8px; font-size:11px;" onclick="deleteInvoice('${inv.id}')">삭제</button>
-                </td>
-            </tr>`;
-        });
-
-        // 페이징 버튼
-        const pgDiv = document.getElementById('adminInvoicePagination');
-        if (pgDiv) {
-            if (totalPages <= 1) { pgDiv.innerHTML = ''; }
-            else {
-                const cur = window._invoicePage;
-                let html = `<div style="display:flex; align-items:center; justify-content:center; gap:4px; margin-top:12px; flex-wrap:wrap;">`;
-                html += `<span style="font-size:12px; color:#64748b; margin-right:6px;">${filteredData.length}건 / ${totalPages}페이지</span>`;
-                html += `<button class="btn btn-neutral" style="padding:4px 10px; font-size:12px;" ${cur===1?'disabled':''} onclick="window._invoicePage=${cur-1}; window.loadAdminRecentInvoices()">◀</button>`;
-                let s = Math.max(1, cur-3), e = Math.min(totalPages, s+6);
-                if (e-s < 6) s = Math.max(1, e-6);
-                for (let i=s; i<=e; i++) {
-                    html += `<button class="btn" style="padding:4px 8px; font-size:12px; ${i===cur ? 'background:var(--primary);color:white;' : 'background:#f1f5f9; color:#334155; border:1px solid #e2e8f0;'}" onclick="window._invoicePage=${i}; window.loadAdminRecentInvoices()">${i}</button>`;
-                }
-                html += `<button class="btn btn-neutral" style="padding:4px 10px; font-size:12px;" ${cur===totalPages?'disabled':''} onclick="window._invoicePage=${cur+1}; window.loadAdminRecentInvoices()">▶</button>`;
-                html += `</div>`;
-                pgDiv.innerHTML = html;
-            }
-        }
     } catch (e) {
         console.error(e);
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:red;">에러: ${e.message}</td></tr>`;
+        const tbody2 = document.getElementById('adminRecentInvoiceList');
+        if (tbody2) tbody2.innerHTML = `<tr><td colspan="6" style="text-align:center; color:red;">에러: ${e.message}</td></tr>`;
     } finally {
         _isInvoiceLoading = false;
     }
     if (returnList) return window._lastInvoiceData;
+};
+
+window.renderAdminInvoicePage = function() {
+    const tbody = document.getElementById('adminRecentInvoiceList');
+    if (!tbody) return;
+
+    const total = _adminInvoiceAllData.length;
+    const totalPages = Math.ceil(total / ADMIN_INVOICE_PAGE_SIZE);
+    const start = (_adminInvoicePage - 1) * ADMIN_INVOICE_PAGE_SIZE;
+    const pageData = _adminInvoiceAllData.slice(start, start + ADMIN_INVOICE_PAGE_SIZE);
+
+    tbody.innerHTML = '';
+    pageData.forEach(inv => {
+        const hName = inv.hotels ? inv.hotels.name : '알수없음(거래처삭제됨)';
+        const cType = (inv.hotels && inv.hotels.contract_type === 'fixed') ? '정액제' : '단가제';
+        const statusBadge = inv.is_sent
+            ? '<span class="badge" style="background:var(--success);">발송완료</span>'
+            : '<span class="badge" style="background:var(--secondary);">작성됨</span>';
+        let invTimeStr = inv.date;
+        if (inv.created_at) {
+            const kst = new Date(new Date(inv.created_at).getTime() + 9 * 60 * 60 * 1000);
+            const mm = String(kst.getUTCMonth() + 1).padStart(2, '0');
+            const dd = String(kst.getUTCDate()).padStart(2, '0');
+            const hh = String(kst.getUTCHours()).padStart(2, '0');
+            const min = String(kst.getUTCMinutes()).padStart(2, '0');
+            invTimeStr = `${mm}-${dd} ${hh}:${min}`;
+        }
+        tbody.innerHTML += `
+        <tr>
+            <td>${invTimeStr}</td>
+            <td style="font-weight:700; color:var(--primary);">${hName}</td>
+            <td style="text-align:right; font-weight:700;">${inv.total_amount.toLocaleString()}원</td>
+            <td>${cType}</td>
+            <td>${statusBadge}</td>
+            <td>
+                <button class="btn btn-neutral" style="padding:4px 8px; font-size:11px; margin-right:5px;" onclick="viewInvoiceDetail('${inv.id}')">보기</button>
+                <button class="btn btn-danger" style="padding:4px 8px; font-size:11px;" onclick="deleteInvoice('${inv.id}')">삭제</button>
+            </td>
+        </tr>`;
+    });
+
+    // 페이징 버튼 렌더
+    const pg = document.getElementById('adminPagination');
+    if (pg) {
+        if (totalPages <= 1) { pg.innerHTML = ''; return; }
+        pg.innerHTML = `
+        <div style="display:flex; justify-content:center; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap;">
+            <button class="btn btn-neutral" style="padding:6px 14px; font-size:13px;" onclick="window.changeAdminInvoicePage(-1)" ${_adminInvoicePage <= 1 ? 'disabled' : ''}>◀ 이전</button>
+            <span style="font-size:13px; color:#555;">${_adminInvoicePage} / ${totalPages} 페이지 (총 ${total}건)</span>
+            <button class="btn btn-neutral" style="padding:6px 14px; font-size:13px;" onclick="window.changeAdminInvoicePage(1)" ${_adminInvoicePage >= totalPages ? 'disabled' : ''}>다음 ▶</button>
+        </div>`;
+    }
+};
+
+window.changeAdminInvoicePage = function(delta) {
+    const totalPages = Math.ceil(_adminInvoiceAllData.length / ADMIN_INVOICE_PAGE_SIZE);
+    _adminInvoicePage = Math.max(1, Math.min(totalPages, _adminInvoicePage + delta));
+    window.renderAdminInvoicePage();
+    document.getElementById('adminRecentInvoiceList')?.closest('.chart-container')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
 window.exportInvoicesToPDF = async function() {
@@ -6688,14 +6744,18 @@ window.viewInvoiceDetail = async function(id) {
 
     // Top 10 그리기
     const titleEl = document.getElementById('rankingTitle');
-    if (titleEl) titleEl.innerHTML = `${parts[0]}년 ${parts[1]}월 매출 TOP 10`;
+    if (titleEl) titleEl.innerHTML = `${parts[0]}년 ${parts[1]}월 매출 TOP`;
     
     const rankingArea = document.getElementById('adminTopRankingArea');
     if(rankingArea) {
         const sorted = Object.entries(hotelSales).sort((a,b) => b[1] - a[1]);
-        rankingArea.innerHTML = sorted.length === 0 ? '<div style="color:gray; padding:10px;">데이터가 없습니다.</div>' : 
-            '<table class="admin-table"><thead><tr><th>순위</th><th>거래처명</th><th>이번 달 매출</th></tr></thead><tbody>' + 
-            sorted.slice(0, 10).map((f, i) => `<tr><td>${i+1}위</td><td>${f[0]}</td><td style="text-align:right;">${f[1].toLocaleString()}원</td></tr>`).join('') + '</tbody></table>';
+        if(sorted.length === 0) {
+            rankingArea.innerHTML = '<div style="color:gray; padding:10px;">데이터가 없습니다.</div>';
+        } else {
+            rankingArea.innerHTML = '<table class="admin-table"><thead><tr><th>순위</th><th>거래처명</th><th>이번 달 매출</th></tr></thead><tbody>' + 
+                sorted.map((f, i) => `<tr><td>${i+1}위</td><td>${f[0]}</td><td style="text-align:right;">${f[1].toLocaleString()}원</td></tr>`).join('') + '</tbody></table>';
+            // 스크롤은 HTML에서 고정 처리 (max-height:320px, overflow-y:auto, -webkit-overflow-scrolling:touch)
+        }
     }
     console.log("DEBUG: Final hotelSales after render:", hotelSales);
 };
