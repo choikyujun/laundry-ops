@@ -1742,59 +1742,63 @@ window.loadAdminStaffList = async function() {
     // Load recent invoices (직원/발행 화면 하단 발행 현황 목록)
     const activityBody = document.getElementById('adminStaffActivityList');
     if(!activityBody) return;
-    
-    // pagination for staff activity list
-    const itemsPerPage = 10;
-    window.currentStaffPage = window.currentStaffPage || 1;
-    const startIdx = (window.currentStaffPage - 1) * itemsPerPage;
-    const endIdx = startIdx + itemsPerPage - 1;
 
-    // [수정] 관리자(차감) 명세서는 직원 발행 현황에서도 보이지 않도록 필터링
-    const { data: invoices, error: iErr, count } = await window.mySupabase.from('invoices')
-        .select('*, hotels(name)', { count: 'exact' })
+    const STAFF_ACTIVITY_PAGE_SIZE = 50;
+    window.currentStaffPage = 1; // 매번 첫 페이지부터
+
+    // 전체 데이터 로드 후 프론트 페이징
+    const { data: invoices, error: iErr } = await window.mySupabase.from('invoices')
+        .select('id, date, total_amount, staff_name, created_at, hotels(name)')
         .eq('factory_id', currentFactoryId)
-        .order('created_at', { ascending: false })
-        .limit(itemsPerPage * 3); // 차감이 포함될 수 있으므로 약간 넉넉하게 불러온 후 프론트에서 필터링하여 페이징
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
 
-    if(iErr) { activityBody.innerHTML = `<tr><td colspan="4" style="color:red;">에러: ${iErr.message}</td></tr>`; }
-    else {
-        const filteredInvoices = invoices ? invoices.filter(inv => !(inv.staff_name && inv.staff_name.startsWith('관리자(차감)'))) : [];
-        const pageInvoices = filteredInvoices.slice(startIdx, endIdx + 1);
-        
-        if (pageInvoices.length === 0) {
+    if(iErr) {
+        activityBody.innerHTML = `<tr><td colspan="4" style="color:red;">에러: ${iErr.message}</td></tr>`;
+        return;
+    }
+
+    const filteredInvoices = invoices
+        ? invoices.filter(inv => !(inv.staff_name && inv.staff_name.startsWith('관리자(차감)')))
+        : [];
+
+    window._staffActivityAllData = filteredInvoices;
+
+    window.renderStaffActivityPage = function() {
+        const total = window._staffActivityAllData.length;
+        const totalPages = Math.ceil(total / STAFF_ACTIVITY_PAGE_SIZE);
+        const start = (window.currentStaffPage - 1) * STAFF_ACTIVITY_PAGE_SIZE;
+        const pageData = window._staffActivityAllData.slice(start, start + STAFF_ACTIVITY_PAGE_SIZE);
+
+        if (pageData.length === 0) {
             activityBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">발행된 명세서가 없습니다.</td></tr>';
         } else {
             activityBody.innerHTML = '';
-            pageInvoices.forEach(inv => {
-            const displaySum = inv.total_amount || 0;
-            const hName = (inv.hotels && inv.hotels.name) ? inv.hotels.name : '알수없음';
-            activityBody.innerHTML += `<tr>
-                <td style="font-size:12px;">${inv.date}</td>
-                <td>${inv.staff_name || '직원'}</td>
-                <td><strong>${hName}</strong></td>
-                <td style="text-align:right;">${displaySum.toLocaleString()}원</td>
-            </tr>`;
-        });
-        
-        // (페이징 버튼 렌더링 로직 유지)
-        const paginationDiv = document.getElementById('adminStaffPagination');
-        if(paginationDiv && count) {
-            const totalPages = Math.ceil(count / itemsPerPage);
-            let pageHtml = '<div style="margin-top:10px; text-align:center;">';
-            for (let i = 1; i <= totalPages; i++) {
-                if (i === window.currentStaffPage) {
-                    pageHtml += `<button style="margin:2px; padding:4px 8px; font-size:12px; background:var(--primary); color:white; border:none; border-radius:4px;">${i}</button>`;
-                } else {
-                    pageHtml += `<button style="margin:2px; padding:4px 8px; font-size:12px; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer;" onclick="window.currentStaffPage=${i}; window.loadAdminStaffList()">${i}</button>`;
-                }
-            }
-            pageHtml += '</div>';
-            paginationDiv.innerHTML = pageHtml;
-        } else if(paginationDiv) {
-            paginationDiv.innerHTML = '';
+            pageData.forEach(inv => {
+                const displaySum = inv.total_amount || 0;
+                const hName = (inv.hotels && inv.hotels.name) ? inv.hotels.name : '알수없음';
+                activityBody.innerHTML += `<tr>
+                    <td style="font-size:12px;">${inv.date}</td>
+                    <td>${inv.staff_name || '직원'}</td>
+                    <td><strong>${hName}</strong></td>
+                    <td style="text-align:right;">${displaySum.toLocaleString()}원</td>
+                </tr>`;
+            });
         }
-    } // closes inner else
-  } // closes outer else
+
+        const paginationDiv = document.getElementById('adminStaffPagination');
+        if (paginationDiv) {
+            if (totalPages <= 1) { paginationDiv.innerHTML = ''; return; }
+            paginationDiv.innerHTML = `
+            <div style="display:flex; justify-content:center; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap;">
+                <button class="btn btn-neutral" style="padding:6px 14px; font-size:13px;" onclick="window.currentStaffPage=Math.max(1,window.currentStaffPage-1); window.renderStaffActivityPage();" ${window.currentStaffPage <= 1 ? 'disabled' : ''}>◀ 이전</button>
+                <span style="font-size:13px; color:#555;">${window.currentStaffPage} / ${totalPages} 페이지 (총 ${total}건)</span>
+                <button class="btn btn-neutral" style="padding:6px 14px; font-size:13px;" onclick="window.currentStaffPage=Math.min(${totalPages},window.currentStaffPage+1); window.renderStaffActivityPage();" ${window.currentStaffPage >= totalPages ? 'disabled' : ''}>다음 ▶</button>
+            </div>`;
+        }
+    };
+
+    window.renderStaffActivityPage();
 };
 
 window.changeStaffPage = function(delta) {
