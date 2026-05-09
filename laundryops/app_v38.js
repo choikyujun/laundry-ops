@@ -950,9 +950,18 @@ window.loadStaffDashboard = async function() {
 };
 
 window.saveAndPrintInvoice = async function() {
+    // [중복 저장 방지] 버튼 즉시 비활성화
+    const saveBtn = document.getElementById('btnSaveInvoice');
+    if (saveBtn) {
+        if (saveBtn.dataset.saving === 'true') return; // 이미 저장 중이면 무시
+        saveBtn.dataset.saving = 'true';
+        saveBtn.disabled = true;
+        saveBtn.innerText = '저장 중...';
+    }
+    try {
     const hId = document.getElementById('staffHotelSelect').value;
     const date = document.getElementById('invoiceDate').value;
-    if (!hId || !date) return;
+    if (!hId || !date) { if(saveBtn) { saveBtn.dataset.saving=''; saveBtn.disabled=false; saveBtn.innerText='💾 저장하기'; } return; }
 
     // 품목 수집 (item-price 셀에서 가격 읽기)
     const items = [];
@@ -1026,6 +1035,18 @@ window.saveAndPrintInvoice = async function() {
     if (badge) badge.style.display = 'none';
 
     if (typeof window.loadStaffInvoiceList === 'function') window.loadStaffInvoiceList();
+
+    } catch(e) {
+        console.error('[saveAndPrintInvoice 오류]', e);
+        alert('저장 중 오류가 발생했습니다: ' + e.message);
+    } finally {
+        // 저장 완료 또는 오류 시 버튼 복원
+        if (saveBtn) {
+            saveBtn.dataset.saving = '';
+            saveBtn.disabled = false;
+            saveBtn.innerText = '💾 저장하기';
+        }
+    }
 };
 
 window.printReport = function(elementId) {
