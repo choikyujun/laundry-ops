@@ -1776,8 +1776,18 @@ window.loadAdminStaffList = async function() {
             pageData.forEach(inv => {
                 const displaySum = inv.total_amount || 0;
                 const hName = (inv.hotels && inv.hotels.name) ? inv.hotels.name : '알수없음';
+                    const createdAt = inv.created_at ? new Date(inv.created_at) : null;
+                let timeStr = inv.date;
+                if (createdAt) {
+                    const kst = new Date(createdAt.getTime() + 9 * 60 * 60 * 1000);
+                    const mm = String(kst.getUTCMonth() + 1).padStart(2, '0');
+                    const dd = String(kst.getUTCDate()).padStart(2, '0');
+                    const hh = String(kst.getUTCHours()).padStart(2, '0');
+                    const min = String(kst.getUTCMinutes()).padStart(2, '0');
+                    timeStr = `${mm}-${dd} ${hh}:${min}`;
+                }
                 activityBody.innerHTML += `<tr>
-                    <td style="font-size:12px;">${inv.date}</td>
+                    <td style="font-size:12px;">${timeStr}</td>
                     <td>${inv.staff_name || '직원'}</td>
                     <td><strong>${hName}</strong></td>
                     <td style="text-align:right;">${displaySum.toLocaleString()}원</td>
