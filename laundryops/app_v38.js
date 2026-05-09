@@ -3137,7 +3137,9 @@ window.loadStaffInvoiceList = async function() {
     // [수정] .neq() 쿼리에서 발생하는 에러일 수 있으므로, 서버 쿼리는 전체를 가져오고 프론트에서 필터링
     if (searchDate) query = query.eq('date', searchDate);
 
-    const { data, error } = await query.order('date', { ascending: false });
+    const { data, error } = await query
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
 
     if (error || !data) {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--danger);">오류: ${error ? error.message : '알 수 없는 오류'}</td></tr>`;
