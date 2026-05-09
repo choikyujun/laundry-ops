@@ -4626,7 +4626,7 @@ window.loadAdminRecentInvoices = async function(returnList = false) {
 
         let query = window.mySupabase
             .from('invoices')
-            .select('id, date, total_amount, is_sent, staff_name, hotel_id, hotels ( name, contract_type )')
+            .select('id, date, created_at, total_amount, is_sent, staff_name, hotel_id, hotels ( name, contract_type )')
             .eq('factory_id', currentFactoryId);
 
         if (sDate) query = query.gte('date', sDate);
@@ -4684,9 +4684,18 @@ window.renderAdminInvoicePage = function() {
         const statusBadge = inv.is_sent
             ? '<span class="badge" style="background:var(--success);">발송완료</span>'
             : '<span class="badge" style="background:var(--secondary);">작성됨</span>';
+        let invTimeStr = inv.date;
+        if (inv.created_at) {
+            const kst = new Date(new Date(inv.created_at).getTime() + 9 * 60 * 60 * 1000);
+            const mm = String(kst.getUTCMonth() + 1).padStart(2, '0');
+            const dd = String(kst.getUTCDate()).padStart(2, '0');
+            const hh = String(kst.getUTCHours()).padStart(2, '0');
+            const min = String(kst.getUTCMinutes()).padStart(2, '0');
+            invTimeStr = `${mm}-${dd} ${hh}:${min}`;
+        }
         tbody.innerHTML += `
         <tr>
-            <td>${inv.date}</td>
+            <td>${invTimeStr}</td>
             <td style="font-weight:700; color:var(--primary);">${hName}</td>
             <td style="text-align:right; font-weight:700;">${inv.total_amount.toLocaleString()}원</td>
             <td>${cType}</td>
