@@ -4592,10 +4592,16 @@ window.OLD_sendInvoicesToClient_0 = async function() {
     window.openSendInvoiceModal();
 };
 let isInvoiceLoading = false;
+// [v38 페이징] 관리자 명세서 목록 페이징 상태
+let _adminInvoiceAllData = [];
+let _adminInvoicePage = 1;
+const ADMIN_INVOICE_PAGE_SIZE = 50;
+
 window.loadAdminRecentInvoices = async function(returnList = false) {
     if (_isInvoiceLoading) return; // 중복 호출 방지
     _isInvoiceLoading = true;
-    
+    _adminInvoicePage = 1; // 필터 변경 시 첫 페이지로
+
     const tbody = document.getElementById('adminRecentInvoiceList');
     if(!tbody) { _isInvoiceLoading = false; return; }
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">명세서를 불러오는 중...</td></tr>';
@@ -4605,18 +4611,18 @@ window.loadAdminRecentInvoices = async function(returnList = false) {
         const eDate = document.getElementById('adminStatsEndDate') ? document.getElementById('adminStatsEndDate').value : '';
         const hotelFilter = document.getElementById('adminStatsHotelFilter') ? document.getElementById('adminStatsHotelFilter').value : 'all';
 
-        // [수정] 관리자(차감) 명세서는 목록 화면에서 안 보이게 필터링
         let query = window.mySupabase
             .from('invoices')
             .select('id, date, total_amount, is_sent, staff_name, hotel_id, hotels ( name, contract_type )')
-            .eq('factory_id', currentFactoryId)
-            ;
+            .eq('factory_id', currentFactoryId);
 
         if (sDate) query = query.gte('date', sDate);
         if (eDate) query = query.lte('date', eDate);
         if (hotelFilter && hotelFilter !== 'all') query = query.eq('hotel_id', hotelFilter);
 
-        const { data, error } = await query.order('date', { ascending: false }).limit(100);
+        const { data, error } = await query
+            .order('date', { ascending: false })
+            .order('created_at', { ascending: false });
 
         if (error) {
             tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:red;">에러: ${error.message}</td></tr>`;
@@ -4624,44 +4630,79 @@ window.loadAdminRecentInvoices = async function(returnList = false) {
             return;
         }
 
-        
         const filteredData = data ? data.filter(inv => !(inv.staff_name && inv.staff_name.startsWith('관리자(차감)'))) : [];
         window._lastInvoiceData = filteredData;
+        _adminInvoiceAllData = filteredData;
+
         if (filteredData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">작성된 명세서가 없습니다.</td></tr>';
-        _isInvoiceLoading = false;
-        if (returnList) return [];
-        return;
-    }
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">작성된 명세서가 없습니다.</td></tr>';
+            const pg = document.getElementById('adminPagination');
+            if (pg) pg.innerHTML = '';
+            _isInvoiceLoading = false;
+            if (returnList) return [];
+            return;
+        }
 
-        tbody.innerHTML = '';
-        filteredData.forEach(inv => {
-            const hName = inv.hotels ? inv.hotels.name : '알수없음(거래처삭제됨)';
-            const cType = (inv.hotels && inv.hotels.contract_type === 'fixed') ? '정액제' : '단가제';
-            const statusBadge = inv.is_sent 
-                ? '<span class="badge" style="background:var(--success);">발송완료</span>' 
-                : '<span class="badge" style="background:var(--secondary);">작성됨</span>';
+        window.renderAdminInvoicePage();
 
-            tbody.innerHTML += `
-            <tr>
-                <td>${inv.date}</td>
-                <td style="font-weight:700; color:var(--primary);">${hName}</td>
-                <td style="text-align:right; font-weight:700;">${inv.total_amount.toLocaleString()}원</td>
-                <td>${cType}</td>
-                <td>${statusBadge}</td>
-                <td>
-                    <button class="btn btn-neutral" style="padding:4px 8px; font-size:11px; margin-right:5px;" onclick="viewInvoiceDetail('${inv.id}')">보기</button>
-                    <button class="btn btn-danger" style="padding:4px 8px; font-size:11px;" onclick="deleteInvoice('${inv.id}')">삭제</button>
-                </td>
-            </tr>`;
-        });
     } catch (e) {
         console.error(e);
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:red;">에러: ${e.message}</td></tr>`;
+        const tbody2 = document.getElementById('adminRecentInvoiceList');
+        if (tbody2) tbody2.innerHTML = `<tr><td colspan="6" style="text-align:center; color:red;">에러: ${e.message}</td></tr>`;
     } finally {
         _isInvoiceLoading = false;
     }
     if (returnList) return window._lastInvoiceData;
+};
+
+window.renderAdminInvoicePage = function() {
+    const tbody = document.getElementById('adminRecentInvoiceList');
+    if (!tbody) return;
+
+    const total = _adminInvoiceAllData.length;
+    const totalPages = Math.ceil(total / ADMIN_INVOICE_PAGE_SIZE);
+    const start = (_adminInvoicePage - 1) * ADMIN_INVOICE_PAGE_SIZE;
+    const pageData = _adminInvoiceAllData.slice(start, start + ADMIN_INVOICE_PAGE_SIZE);
+
+    tbody.innerHTML = '';
+    pageData.forEach(inv => {
+        const hName = inv.hotels ? inv.hotels.name : '알수없음(거래처삭제됨)';
+        const cType = (inv.hotels && inv.hotels.contract_type === 'fixed') ? '정액제' : '단가제';
+        const statusBadge = inv.is_sent
+            ? '<span class="badge" style="background:var(--success);">발송완료</span>'
+            : '<span class="badge" style="background:var(--secondary);">작성됨</span>';
+        tbody.innerHTML += `
+        <tr>
+            <td>${inv.date}</td>
+            <td style="font-weight:700; color:var(--primary);">${hName}</td>
+            <td style="text-align:right; font-weight:700;">${inv.total_amount.toLocaleString()}원</td>
+            <td>${cType}</td>
+            <td>${statusBadge}</td>
+            <td>
+                <button class="btn btn-neutral" style="padding:4px 8px; font-size:11px; margin-right:5px;" onclick="viewInvoiceDetail('${inv.id}')">보기</button>
+                <button class="btn btn-danger" style="padding:4px 8px; font-size:11px;" onclick="deleteInvoice('${inv.id}')">삭제</button>
+            </td>
+        </tr>`;
+    });
+
+    // 페이징 버튼 렌더
+    const pg = document.getElementById('adminPagination');
+    if (pg) {
+        if (totalPages <= 1) { pg.innerHTML = ''; return; }
+        pg.innerHTML = `
+        <div style="display:flex; justify-content:center; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap;">
+            <button class="btn btn-neutral" style="padding:6px 14px; font-size:13px;" onclick="window.changeAdminInvoicePage(-1)" ${_adminInvoicePage <= 1 ? 'disabled' : ''}>◀ 이전</button>
+            <span style="font-size:13px; color:#555;">${_adminInvoicePage} / ${totalPages} 페이지 (총 ${total}건)</span>
+            <button class="btn btn-neutral" style="padding:6px 14px; font-size:13px;" onclick="window.changeAdminInvoicePage(1)" ${_adminInvoicePage >= totalPages ? 'disabled' : ''}>다음 ▶</button>
+        </div>`;
+    }
+};
+
+window.changeAdminInvoicePage = function(delta) {
+    const totalPages = Math.ceil(_adminInvoiceAllData.length / ADMIN_INVOICE_PAGE_SIZE);
+    _adminInvoicePage = Math.max(1, Math.min(totalPages, _adminInvoicePage + delta));
+    window.renderAdminInvoicePage();
+    document.getElementById('adminRecentInvoiceList')?.closest('.chart-container')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
 window.exportInvoicesToPDF = async function() {
