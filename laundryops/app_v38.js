@@ -1261,8 +1261,7 @@ window.updateTrendChartOnly = async function() {
       rankingSorted.map((f, i) => `
           <tr><td>${i+1}위</td><td>${f[0]}</td><td style="text-align:right; font-weight:700; color:var(--primary);">${f[1].toLocaleString()}원</td></tr>
       `).join('') + '</tbody></table>';
-      rankingArea.style.maxHeight = rankingSorted.length > 10 ? '320px' : '';
-      rankingArea.style.overflowY = rankingSorted.length > 10 ? 'auto' : '';
+      // 스크롤은 HTML에서 고정 처리 (max-height:320px, overflow-y:auto)
   }
 
   window.updateRevenueTrendChart(monthlyTrend, filterId === 'all' ? '전체' : (f.hotels[filterId] ? f.hotels[filterId].name : '선택 거래처'));
@@ -6733,13 +6732,10 @@ window.viewInvoiceDetail = async function(id) {
         const sorted = Object.entries(hotelSales).sort((a,b) => b[1] - a[1]);
         if(sorted.length === 0) {
             rankingArea.innerHTML = '<div style="color:gray; padding:10px;">데이터가 없습니다.</div>';
-            rankingArea.style.maxHeight = '';
-            rankingArea.style.overflowY = '';
         } else {
             rankingArea.innerHTML = '<table class="admin-table"><thead><tr><th>순위</th><th>거래처명</th><th>이번 달 매출</th></tr></thead><tbody>' + 
                 sorted.map((f, i) => `<tr><td>${i+1}위</td><td>${f[0]}</td><td style="text-align:right;">${f[1].toLocaleString()}원</td></tr>`).join('') + '</tbody></table>';
-            rankingArea.style.maxHeight = sorted.length > 10 ? '320px' : '';
-            rankingArea.style.overflowY = sorted.length > 10 ? 'auto' : '';
+            // 스크롤은 HTML에서 고정 처리 (max-height:320px, overflow-y:auto, -webkit-overflow-scrolling:touch)
         }
     }
     console.log("DEBUG: Final hotelSales after render:", hotelSales);
