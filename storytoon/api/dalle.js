@@ -10,57 +10,73 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config.js';
 const USE_DALLE = false;
 const IMAGE_EDGE_URL = `${SUPABASE_URL}/functions/v1/image-generate`;
 
-// ── 스타일별 프롬프트 수식어 ─────────────────────
-const STYLE_SUFFIXES = {
-  shoujo: 'shoujo anime manga style, soft pastel colors, sparkle effects, Studio Ghibli inspired, high quality, no text, no watermark',
-  webtoon: 'Korean webtoon style, clean bold linework, vibrant colors, modern Korean digital comic, high quality, no text, no watermark',
-  disney: 'Disney Pixar 3D animation style, cinematic lighting, vibrant rich colors, professional quality, no text, no watermark',
+// ── 스타일별 핵심 수식어 (짧게 유지 - Pollinations 안정성) ──
+const STYLE_PREFIX = {
+  shoujo:  'shoujo anime style, soft pastel colors, clean linework, no text',
+  webtoon: 'Korean webtoon style, bold lines, vibrant colors, no text',
+  disney:  'Disney Pixar 3D style, cinematic lighting, colorful, no text',
 };
 
-// ── 단일 이미지 생성 ─────────────────────────────
+// ── 단일 이미지 생성 (재시도 포함) ──────────────
 export async function generatePanelImage({ panel, style = 'shoujo' }) {
   const prompt = buildPrompt(panel, style);
-  return USE_DALLE ? generateViaDalle(prompt) : generateViaPollinations(prompt);
+  if (USE_DALLE) return generateViaDalle(prompt);
+  return generateViaPollinations(prompt, 0);
 }
 
-// ── 전체 패널 이미지 일괄 생성 ───────────────────
+// ── 전체 패널 이미지 순차 생성 ──────────────────
+// Pollinations rate limit 방지 → 1개씩 순차 처리
 export async function generateAllImages({ panels, style = 'shoujo', onProgress }) {
-  const BATCH_SIZE = 2;
-  const urls = new Array(panels.length).fill(null);
+  const urls = [];
 
-  for (let i = 0; i < panels.length; i += BATCH_SIZE) {
-    const batch = panels.slice(i, i + BATCH_SIZE);
-    const results = await Promise.allSettled(
-      batch.map(panel => generatePanelImage({ panel, style }))
-    );
+  for (let i = 0; i < panels.length; i++) {
+    try {
+      const url = await generatePanelImage({ panel: panels[i], style });
+      urls.push(url);
+    } catch (err) {
+      console.warn(`패널 ${i + 1} 실패:`, err.message);
+      urls.push(null);
+    }
 
-    results.forEach((result, j) => {
-      const idx = i + j;
-      urls[idx] = result.status === 'fulfilled' ? result.value : null;
-      if (result.status === 'rejected') {
-        console.warn(`패널 ${idx + 1} 이미지 생성 실패:`, result.reason);
-      }
-    });
+    onProgress?.(i + 1, panels.length);
 
-    onProgress?.(Math.min(i + BATCH_SIZE, panels.length), panels.length);
-
-    // 배치 간 딜레이
-    if (i + BATCH_SIZE < panels.length) {
-      await new Promise(r => setTimeout(r, 800));
+    // 패널 간 딜레이 (rate limit 방지)
+    if (i < panels.length - 1) {
+      await new Promise(r => setTimeout(r, 2000));
     }
   }
 
   return urls;
 }
 
-// ── Pollinations.ai (무료) ───────────────────────
-async function generateViaPollinations(prompt) {
+// ── Pollinations.ai (무료) - 재시도 3회 ─────────
+async function generateViaPollinations(prompt, attempt = 0) {
+  const MAX_RETRY = 3;
   const seed = Math.floor(Math.random() * 999999);
-  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt.slice(0, 1000))}?width=1024&height=576&seed=${seed}&nologo=true&enhance=true`;
 
-  // pollinations는 URL 자체가 이미지 — 실제 fetch 없이 URL만 반환
-  // (브라우저에서 <img src="..."> 로 바로 로드됨)
-  return url;
+  // 프롬프트 400자로 제한 (안정성)
+  const safePrompt = prompt.slice(0, 400);
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(safePrompt)}?width=896&height=512&seed=${seed}&nologo=true&enhance=false`;
+
+  try {
+    // 실제 이미지 로드 확인 (타임아웃 20초)
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20000);
+
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return url;
+
+  } catch (err) {
+    if (attempt < MAX_RETRY) {
+      console.warn(`재시도 ${attempt + 1}/${MAX_RETRY}:`, err.message);
+      await new Promise(r => setTimeout(r, 3000 * (attempt + 1)));
+      return generateViaPollinations(prompt, attempt + 1);
+    }
+    throw new Error(`이미지 생성 실패 (${attempt + 1}회 시도): ${err.message}`);
+  }
 }
 
 // ── DALL-E 3 (유료, 추후 전환) ───────────────────
@@ -71,22 +87,18 @@ async function generateViaDalle(prompt) {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
     },
-    body: JSON.stringify({
-      prompt,
-      size: '1792x1024',
-      quality: 'standard',
-      style: 'vivid',
-    }),
+    body: JSON.stringify({ prompt, size: '1792x1024', quality: 'standard', style: 'vivid' }),
   });
-
   if (!res.ok) throw new Error(`이미지 생성 실패: ${res.status}`);
   const data = await res.json();
   return data.url || null;
 }
 
-// ── 프롬프트 빌더 ────────────────────────────────
+// ── 프롬프트 빌더 (간결하게) ─────────────────────
 function buildPrompt(panel, style) {
-  const base = panel.imagePrompt?.[style] || panel.description || panel.scene || '';
-  const suffix = STYLE_SUFFIXES[style] || STYLE_SUFFIXES.shoujo;
-  return `${base}, ${suffix}`;
+  // imagePrompt가 있으면 우선 사용, 없으면 scene+description으로 대체
+  const base = panel.imagePrompt?.[style]
+    || `${panel.scene || ''}, ${panel.description || ''}`.slice(0, 200);
+  const prefix = STYLE_PREFIX[style] || STYLE_PREFIX.shoujo;
+  return `${base}, ${prefix}`;
 }

@@ -105,14 +105,14 @@ async function generateToon(story, style, cuts) {
     await new Promise(r => setTimeout(r, 500)); // UI 피드백용 딜레이
     setLoadingStep('step-panels', 'done');
 
-    // STEP 3: 이미지 생성
+    // STEP 3: 이미지 생성 (순차 처리)
     setLoadingStep('step-images', 'active');
     const imageUrls = await generateAllImages({
       panels: toonData.panels,
       style,
       onProgress: (done, total) => {
         const el = document.querySelector('#step-images .step-text');
-        if (el) el.textContent = `이미지 생성 중... (${done}/${total})`;
+        if (el) el.textContent = `이미지 생성 중... (${done} / ${total}컷)`;
       },
     });
     setLoadingStep('step-images', 'done');
