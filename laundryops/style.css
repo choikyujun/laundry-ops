@@ -43,9 +43,9 @@ body { font-family: 'Pretendard', sans-serif; margin: 0; background-color: var(-
   cursor: pointer;
   font-weight: 700;
   font-size: 13px;
-  color: #475569;
-  background: #f1f5f9;
-  border: 1.5px solid #e2e8f0;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1.5px solid #93c5fd;
   border-radius: 10px;
   flex: 1;
   text-align: center;
