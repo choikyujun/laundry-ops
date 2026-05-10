@@ -18,6 +18,10 @@ window.loadAnalysisTab = async function () {
     return;
   }
 
+  // 항상 새로 렌더링 (다른 공장 로그인 시 캐시 방지)
+  root.innerHTML = '';
+  window._invoiceAnalysisFactoryId = null;
+
   root.innerHTML = `<div style="color:#94A3B8; padding:40px; text-align:center;">데이터 로딩 중...</div>`;
 
   try {
@@ -42,12 +46,9 @@ window.loadAnalysisTab = async function () {
       `<option value="${h.id}">${h.name}</option>`
     ).join('');
 
-    // 거래처 체크박스 버튼 생성
+    // 거래처 체크박스 버튼 생성 (onclick 인라인)
     const hotelCheckboxes = hotels.map((h, i) =>
-      `<label class="an-hotel-chip" style="--chip-color:${PALETTE[i % PALETTE.length]}">
-        <input type="checkbox" value="${h.id}" style="display:none;">
-        <span>${h.name}</span>
-      </label>`
+      `<div class="an-hotel-chip" data-id="${h.id}" data-name="${h.name.replace(/"/g,'&quot;')}" style="--chip-color:${PALETTE[i % PALETTE.length]}" onclick="this.classList.toggle('selected')">${h.name}</div>`
     ).join('');
 
     root.innerHTML = `
@@ -81,7 +82,8 @@ window.loadAnalysisTab = async function () {
         .an-summary-sub { font-size:10px; color:#94A3B8; margin-top:2px; }
 
         /* 캔버스 */
-        .analysis-canvas-wrap { position:relative; width:100%; height:260px; }
+        .analysis-canvas-wrap { position:relative; width:100%; height:240px; }
+        @media(max-width:768px){ .analysis-canvas-wrap { height:180px; } }
 
         /* 요일 섹션 */
         .analysis-ctrl { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
@@ -98,6 +100,7 @@ window.loadAnalysisTab = async function () {
         <div class="analysis-section-title">
           <h4>📊 거래처별 일별 매출</h4>
           <span class="an-badge">월간</span>
+          <span style="font-size:11px; color:#ef4444;">※ 거래처를 선택한 후 "조회" 버튼을 클릭하세요. 추가로 거래처를 선택하면 중복 비교가 가능합니다</span>
         </div>
 
         <!-- 월 선택 -->
@@ -157,13 +160,7 @@ window.loadAnalysisTab = async function () {
       </div>
     `;
 
-    // 칩 클릭 이벤트
-    document.querySelectorAll('.an-hotel-chip').forEach(chip => {
-      chip.addEventListener('click', () => {
-        chip.classList.toggle('selected');
-        chip.querySelector('input').checked = chip.classList.contains('selected');
-      });
-    });
+
 
     await window._loadChartJs();
 
@@ -190,6 +187,38 @@ const PALETTE = [
   '#38BDF8','#4ADE80','#FBBF24','#C084FC','#F472B6',
 ];
 
+const DOW_KR = ['일','월','화','수','목','금','토'];
+
+// 한국 공휴일 (YYYY-MM-DD)
+const KR_HOLIDAYS = new Set([
+  // 2025
+  '2025-01-01','2025-01-28','2025-01-29','2025-01-30',
+  '2025-03-01','2025-05-05','2025-05-06','2025-06-06',
+  '2025-08-15','2025-10-03','2025-10-06','2025-10-07','2025-10-08','2025-10-09',
+  '2025-12-25',
+  // 2026
+  '2026-01-01','2026-02-17','2026-02-18','2026-02-19',
+  '2026-03-01','2026-03-02','2026-05-05','2026-05-25',
+  '2026-06-06','2026-08-15','2026-08-17',
+  '2026-09-24','2026-09-25','2026-09-26',
+  '2026-10-03','2026-10-09','2026-12-25',
+]);
+
+function _getDayType(dateStr) {
+  // 0: 평일, 1: 토요일, 2: 일요일/공휴일
+  if (KR_HOLIDAYS.has(dateStr)) return 2;
+  const dow = new Date(dateStr).getDay();
+  if (dow === 0) return 2;
+  if (dow === 6) return 1;
+  return 0;
+}
+function _dayColor(dateStr) {
+  const t = _getDayType(dateStr);
+  if (t === 2) return '#ef4444';
+  if (t === 1) return '#3b82f6';
+  return '#334155';
+}
+
 const _chartInstances = {};
 function _drawChart(canvasId, config) {
   if (_chartInstances[canvasId]) {
@@ -203,16 +232,10 @@ function _drawChart(canvasId, config) {
 
 // 전체 선택 / 해제
 window.selectAllHotels = function () {
-  document.querySelectorAll('.an-hotel-chip').forEach(chip => {
-    chip.classList.add('selected');
-    chip.querySelector('input').checked = true;
-  });
+  document.querySelectorAll('.an-hotel-chip').forEach(c => c.classList.add('selected'));
 };
 window.clearAllHotels = function () {
-  document.querySelectorAll('.an-hotel-chip').forEach(chip => {
-    chip.classList.remove('selected');
-    chip.querySelector('input').checked = false;
-  });
+  document.querySelectorAll('.an-hotel-chip').forEach(c => c.classList.remove('selected'));
 };
 
 // ① 일별 매출 차트
@@ -225,8 +248,8 @@ window.renderDailyChart = async function () {
   console.log('[analysis] selected chips:', chips.length);
   if (chips.length === 0) return alert('거래처를 선택해주세요.');
 
-  const selectedIds  = Array.from(chips).map(c => c.querySelector('input').value);
-  const selectedNames = Array.from(chips).map(c => c.querySelector('span').textContent);
+  const selectedIds   = Array.from(chips).map(c => c.dataset.id);
+  const selectedNames = Array.from(chips).map(c => c.dataset.name);
 
   const factoryId = _getFactoryId();
   const [y, mo] = month.split('-').map(Number);
@@ -250,19 +273,15 @@ window.renderDailyChart = async function () {
   if (invErr) return alert('조회 오류: ' + invErr.message);
   if (!invoices) return;
 
-  // 칩 색상 맵
   const allChips = document.querySelectorAll('.an-hotel-chip');
-  const colorMap = {};
-  allChips.forEach(c => {
-    colorMap[c.querySelector('input').value] = getComputedStyle(c).getPropertyValue('--chip-color').trim() || '#00a8e8';
-  });
 
   const datasets = selectedIds.map((hId, i) => {
     const dayMap = {};
     invoices.filter(inv => inv.hotel_id === hId).forEach(inv => {
       dayMap[inv.date] = (dayMap[inv.date] || 0) + Number(inv.total_amount || 0);
     });
-    const color = PALETTE[Array.from(allChips).findIndex(c => c.querySelector('input').value === hId) % PALETTE.length];
+    const chipIdx = Array.from(allChips).findIndex(c => c.dataset.id === hId);
+    const color = PALETTE[(chipIdx >= 0 ? chipIdx : i) % PALETTE.length];
     return {
       label: selectedNames[i],
       data: allDays.map(d => dayMap[d] || 0),
@@ -294,19 +313,86 @@ window.renderDailyChart = async function () {
 
   console.log('[analysis] datasets:', datasets.length, 'days:', allDays.length);
 
+  const isMobile = window.innerWidth < 768;
+  const xLabels = allDays.map(d => d.slice(8)); // "01"~"31"
+  const dowLabels = allDays.map(d => DOW_KR[new Date(d).getDay()]);
+
+  // 날짜+요일 커스텀 렌더 플러그인
+  const xDowPlugin = {
+    id: 'xDowLabels',
+    afterDraw(chart) {
+      const { ctx, scales: { x, y } } = chart;
+      const ticks = x.ticks;
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      const fontSize = isMobile ? 8 : 9;
+      ctx.font = `${fontSize}px sans-serif`;
+      ticks.forEach((tick, i) => {
+        const idx = tick.value;
+        const dateStr = allDays[idx];
+        if (!dateStr) return;
+        const show = isMobile
+          ? (parseInt(xLabels[idx])===1 || parseInt(xLabels[idx])===11 || parseInt(xLabels[idx])===21 || idx===allDays.length-1)
+          : true;
+        if (!show) return;
+        const xPos = x.getPixelForTick(i);
+        const yPos = y.bottom + (isMobile ? 20 : 22);
+        ctx.fillStyle = _dayColor(dateStr);
+        ctx.fillText(dowLabels[idx], xPos, yPos);
+      });
+      ctx.restore();
+    }
+  };
+
   _drawChart('canvasDailyRevenue', {
     type: 'line',
-    data: { labels: allDays.map(d => d.slice(5)), datasets },
+    data: { labels: xLabels, datasets },
+    plugins: [xDowPlugin],
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: { padding: { bottom: isMobile ? 14 : 16 } },
       plugins: {
-        legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 14, padding: 14 } },
-        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()}원` } }
+        legend: { position: 'top', labels: { font: { size: isMobile ? 10 : 11 }, boxWidth: 12, padding: 10 } },
+        tooltip: {
+          callbacks: {
+            title: ctx => {
+              const idx = ctx[0].dataIndex;
+              return `${allDays[idx]} (${dowLabels[idx]})`;
+            },
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()}원`
+          }
+        }
       },
       scales: {
-        x: { ticks: { font: { size: 10 }, maxRotation: 45 } },
-        y: { ticks: { font: { size: 10 }, callback: v => v >= 10000 ? (v/10000).toFixed(0)+'만' : v.toLocaleString() }, beginAtZero: true }
+        x: {
+          ticks: {
+            font: { size: isMobile ? 9 : 10 },
+            color: (ctx) => {
+              const idx = ctx.index;
+              return allDays[idx] ? _dayColor(allDays[idx]) : '#334155';
+            },
+            maxRotation: 0,
+            autoSkip: false,
+            callback: (val, idx) => {
+              const day = parseInt(xLabels[idx]);
+              if (isMobile) {
+                return (day===1||day===11||day===21||idx===allDays.length-1) ? xLabels[idx] : '';
+              }
+              return xLabels[idx];
+            }
+          },
+          grid: { display: false }
+        },
+        y: {
+          ticks: {
+            font: { size: isMobile ? 9 : 10 },
+            callback: v => v >= 10000 ? (v/10000).toFixed(0)+'만' : v.toLocaleString(),
+            maxTicksLimit: 5
+          },
+          beginAtZero: true
+        }
       }
     }
   });
