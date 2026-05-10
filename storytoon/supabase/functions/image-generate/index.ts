@@ -1,11 +1,10 @@
 /**
  * StoryToon - Edge Function: image-generate
- * OpenAI DALL-E 3 이미지 생성 (서버에서 API 키 관리)
+ * Pollinations.ai 사용 (무료, API 키 불필요)
+ * 추후 DALL-E 3 / Stable Diffusion 유료 전환 가능
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-
-const OPENAI_API_URL = 'https://api.openai.com/v1/images/generations';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -14,7 +13,6 @@ const CORS_HEADERS = {
 };
 
 serve(async (req: Request) => {
-  // CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS });
   }
@@ -22,10 +20,9 @@ serve(async (req: Request) => {
   try {
     const {
       prompt,
-      negative_prompt,
-      size = '1792x1024',
-      quality = 'standard',
-      style = 'vivid',
+      negative_prompt = 'ugly, deformed, blurry, low quality, nsfw, watermark, text',
+      width = 1024,
+      height = 576,
     } = await req.json();
 
     if (!prompt) {
@@ -35,57 +32,17 @@ serve(async (req: Request) => {
       );
     }
 
-    const apiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!apiKey) {
-      return new Response(
-        JSON.stringify({ error: 'OpenAI API 키가 설정되지 않았습니다.' }),
-        { status: 500, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } }
-      );
-    }
+    // 프롬프트 정제 (URL 인코딩)
+    const finalPrompt = prompt.slice(0, 1000);
+    const seed = Math.floor(Math.random() * 999999);
 
-    // 프롬프트 길이 제한 (DALL-E 3: 4000자)
-    const finalPrompt = prompt.slice(0, 3800);
+    // Pollinations.ai API (무료, 인증 불필요)
+    const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=${width}&height=${height}&seed=${seed}&nologo=true&enhance=true`;
 
-    const response = await fetch(OPENAI_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'dall-e-3',
-        prompt: finalPrompt,
-        n: 1,
-        size,
-        quality,
-        style,
-        response_format: 'url',
-      }),
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      console.error('DALL-E API 오류:', err);
-
-      // Rate limit 처리
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.' }),
-          { status: 429, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      return new Response(
-        JSON.stringify({ error: `DALL-E API 오류: ${response.status}`, detail: err }),
-        { status: 502, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const data = await response.json();
-    const imageUrl = data.data?.[0]?.url;
-
-    if (!imageUrl) {
-      throw new Error('이미지 URL을 받지 못했습니다.');
+    // URL 유효성 확인 (HEAD 요청)
+    const check = await fetch(imageUrl, { method: 'HEAD' });
+    if (!check.ok) {
+      throw new Error(`이미지 생성 실패: ${check.status}`);
     }
 
     return new Response(
