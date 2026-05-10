@@ -85,12 +85,18 @@ export async function analyzeStory({ story, cuts = 6, style = 'shoujo' }) {
   // Edge Function이 { content: "..." } 형태로 반환
   const raw = typeof data.content === 'string' ? data.content : JSON.stringify(data);
 
+  // 마크다운 코드블록 제거 (```json ... ``` 또는 ``` ... ```)
+  const stripped = raw
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```\s*$/, '')
+    .trim();
+
   try {
-    return JSON.parse(raw);
+    return JSON.parse(stripped);
   } catch {
-    // JSON 파싱 실패 시 raw에서 JSON 추출 시도
-    const match = raw.match(/\{[\s\S]*\}/);
+    // JSON 블록 추출 재시도
+    const match = stripped.match(/\{[\s\S]*\}/);
     if (match) return JSON.parse(match[0]);
-    throw new Error('응답 파싱 실패');
+    throw new Error('응답 파싱 실패: ' + stripped.slice(0, 100));
   }
 }
