@@ -6480,13 +6480,8 @@ window.addSimpleItem = async function() {
     
     console.log("DEBUG: Final Payload:", JSON.stringify(finalPayload));
     
-    const { data: inserted, error: insertError } = await window.mySupabase.from('hotel_item_prices').insert([finalPayload]);
-    
-    if (insertError) {
-        console.error("DEBUG: Insert failed:", insertError);
-        alert('품목 추가 실패: ' + insertError.message);
-        return;
-    }
+    const { error: insertError } = await window.mySupabase.from('hotel_item_prices')
+        .upsert([finalPayload], { onConflict: 'hotel_id,name' });
     
     if (insertError) {
         console.error("DEBUG: Insert failed:", insertError);
