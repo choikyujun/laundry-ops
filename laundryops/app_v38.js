@@ -3187,6 +3187,34 @@ window.openInvoiceModal = async function() {
         priceItems.forEach(item => { tbody.innerHTML += makeRow(item); });
     }
 
+    // 단가표에 없는 저장된 항목도 추가 (품목명 변경 등으로 매칭 안 된 것 처리)
+    if (isEditMode) {
+        const { data: existingItems } = await window.mySupabase
+            .from('invoice_items')
+            .select('name, qty, price, unit')
+            .eq('invoice_id', existingInv.id);
+        if (existingItems) {
+            const priceNames = new Set(priceItems.map(p => p.name));
+            existingItems.forEach(it => {
+                if (!priceNames.has(it.name) && (it.qty || 0) > 0) {
+                    const unit = it.unit || '개';
+                    tbody.innerHTML += `
+                    <tr style="background:#fff8e1;">
+                        <td style="color:#b45309;">${it.name} <span style="font-size:10px;">(변경 전)</span></td>
+                        <td>${unit}</td>
+                        <td class="item-price">${it.price}</td>
+                        <td><input type="number" class="inv-qty qty-input" value="${it.qty}"
+                            onfocus="if(this.value==='0') this.value=''; else { var t=this; setTimeout(function(){t.select();}, 10); }"
+                            onblur="if(this.value==='') this.value='0';"
+                            oninput="calcTotal()" onkeydown="handleQtyKeydown(event)"
+                            style="width:60px; padding:3px; text-align:center;"></td>
+                        <td class="item-amount">0원</td>
+                    </tr>`;
+                }
+            });
+        }
+    }
+
     if (typeof window.calcTotal === 'function') window.calcTotal();
 };
 
@@ -6617,8 +6645,10 @@ window.viewInvoiceDetail = async function(id) {
 
     // 단가표와 저장된 데이터 병합
     const mergedItems = [];
+    const matchedNames = new Set();
     if (priceList && priceList.length > 0) {
         priceList.forEach(p => {
+            matchedNames.add(p.name);
             mergedItems.push({
                 name: p.name,
                 price: Number(p.price || 0),
@@ -6626,17 +6656,18 @@ window.viewInvoiceDetail = async function(id) {
                 category: p.category_name || '기타'
             });
         });
-    } else {
-        // 둘 다 없는 경우(예외 처리) 그냥 저장된 것만 띄움
-        (inv.invoice_items || []).forEach(it => {
+    }
+    // 단가표에 없는 저장 항목도 병합 (품목명 변경 등으로 매칭 안 된 것)
+    (inv.invoice_items || []).forEach(it => {
+        if (!matchedNames.has(it.name)) {
             mergedItems.push({
                 name: it.name,
                 price: Number(it.price || 0),
                 qty: Number(it.qty || 0),
                 category: '기타'
             });
-        });
-    }
+        }
+    });
 
     const supplyPrice = mergedItems.reduce((s, it) => s + (it.price * it.qty), 0);
     let reportHtml = '';
