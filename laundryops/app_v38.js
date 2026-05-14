@@ -1691,48 +1691,6 @@ window.updateHotelItemPrice = async function(id, newPrice) {
     console.log("DEBUG: Price updated successfully");
 };
 
-// 품목명 수정 (카테고리 있는 단가수정 모드)
-window.updateHotelItemName = async function(id, newName) {
-    const name = (newName || '').trim();
-    if (!name) { alert('품목명을 입력해주세요.'); window.loadHotelPriceList(); return; }
-    
-    // 카테고리별 중복 체크
-    const { data: existing } = await window.mySupabase.from('hotel_item_prices')
-        .select('id')
-        .eq('hotel_id', editingHotelId)
-        .eq('name', name)
-        .neq('id', id)
-        .maybeSingle();
-    if (existing) { alert('같은 이름의 품목이 이미 존재합니다.'); window.loadHotelPriceList(); return; }
-    
-    const { error } = await window.mySupabase.from('hotel_item_prices')
-        .update({ name })
-        .eq('id', id);
-    if (error) { alert('품목명 수정 실패: ' + error.message); }
-    window.loadHotelPriceList();
-};
-
-// 품목명 수정 (간편 단가수정 모드)
-window.updateSimpleItemName = async function(id, newName) {
-    const name = (newName || '').trim();
-    if (!name) { alert('품목명을 입력해주세요.'); window.loadSimplePriceList(); return; }
-    
-    // 중복 체크
-    const { data: existing } = await window.mySupabase.from('hotel_item_prices')
-        .select('id')
-        .eq('hotel_id', editingHotelId)
-        .eq('name', name)
-        .neq('id', id)
-        .maybeSingle();
-    if (existing) { alert('같은 이름의 품목이 이미 존재합니다.'); window.loadSimplePriceList(); return; }
-    
-    const { error } = await window.mySupabase.from('hotel_item_prices')
-        .update({ name })
-        .eq('id', id);
-    if (error) { alert('품목명 수정 실패: ' + error.message); }
-    window.loadSimplePriceList();
-};
-
 window.deleteHotelPrice = async function(itemName) {
     // [v38 SQL-First] hotel_item_prices 테이블에서 직접 삭제
     if(!confirm('정말 삭제하시겠습니까?')) return;
@@ -6457,7 +6415,7 @@ window.loadHotelPriceList = async function() {
     
     tbody.innerHTML = filteredItems.map(it => `<tr>
             <td style="background:#f8fafc;"><span class="badge" style="background:#e2e8f0; color:#334155;">${it.category_name}</span></td>
-            <td><input type="text" value="${it.name.replace(/"/g, '&quot;')}" onchange="updateHotelItemName('${it.id}', this.value)" style="width:140px; padding:4px; font-weight:700; border:1px solid #e2e8f0; border-radius:4px;"></td>
+            <td><strong>${it.name}</strong></td>
             <td><input type="number" value="${it.price}" onchange="updateHotelItemPrice('${it.id}', this.value)" style="width:100px; padding:4px;">원</td>
             <td>${it.unit}</td>
             <td><button class="btn btn-danger" style="padding:4px 8px; font-size:11px;" onclick="deleteHotelPrice('${it.id}')">삭제</button></td>
@@ -6486,7 +6444,7 @@ window.loadSimplePriceList = async function() {
     }
 
     tbody.innerHTML = items.map(it => `<tr>
-            <td><input type="text" value="${it.name.replace(/"/g, '&quot;')}" onchange="updateSimpleItemName('${it.id}', this.value)" style="width:140px; padding:4px; font-weight:700; border:1px solid #e2e8f0; border-radius:4px;"></td>
+            <td><strong>${it.name}</strong></td>
             <td><input type="number" value="${it.price}" onchange="updateHotelItemPrice('${it.id}', this.value)" style="width:100px; padding:4px;">원</td>
             <td>${it.unit}</td>
             <td><button class="btn btn-danger" style="padding:4px 8px; font-size:11px;" onclick="deleteSimpleItem('${it.id}')">삭제</button></td>
