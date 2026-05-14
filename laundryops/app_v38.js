@@ -851,8 +851,13 @@ window.openRegisterModal = function() {
   openModal('registerModal');
 };
 
+let _submitLock = false;
 window.submitRegistration = async function() {
-    await window.fetchFromSupabase(); // [v33 안전 동기화] 최신 데이터 먼저 로드
+    // 이중 클릭 방지
+    if (_submitLock) return;
+    _submitLock = true;
+    const btn = document.querySelector('button[onclick="submitRegistration()"]');
+    if (btn) { btn.disabled = true; btn.innerText = '처리 중...'; }
 
     const fields = [
         { id: 'reg_name', err: 'err_reg_name' }, { id: 'reg_bizNo', err: 'err_reg_bizNo' },
@@ -880,16 +885,16 @@ window.submitRegistration = async function() {
             if(err) err.style.display = 'none';
         }
     });
-    if(!isValid) { firstErrorEl.focus(); return; }
+    if(!isValid) { firstErrorEl.focus(); _submitLock = false; if(btn) { btn.disabled = false; btn.innerText = '가입 신청'; } return; }
 
     const regId = document.getElementById('reg_id').value.trim();
     
     // DB에서 중복 ID 체크
     const { data: existingFactory } = await window.mySupabase.from('factories').select('id').eq('admin_id', regId).maybeSingle();
-    if(existingFactory) { alert('이미 사용 중인 ID입니다.'); return; }
+    if(existingFactory) { alert('이미 사용 중인 ID입니다.'); _submitLock = false; if(btn) { btn.disabled = false; btn.innerText = '가입 신청'; } return; }
     
     const { data: existingPending } = await window.mySupabase.from('pending_factories').select('id').eq('admin_id', regId).maybeSingle();
-    if(existingPending) { alert('이미 가입 신청 중인 ID입니다.'); return; }
+    if(existingPending) { alert('이미 가입 신청 중인 ID입니다.'); _submitLock = false; if(btn) { btn.disabled = false; btn.innerText = '가입 신청'; } return; }
 
     const reqId = 'req_' + Date.now();
     const newFactory = {
@@ -909,7 +914,12 @@ window.submitRegistration = async function() {
     
     const { error } = await window.mySupabase.from('pending_factories').insert([newFactory]);
     if (error) {
-        alert('가입 신청 실패: ' + error.message);
+        // UNIQUE 제약조건 위반 등 중복 에러 → 사용자 친화적 메시지
+        const msg = (error.code === '23505' || error.message?.includes('duplicate'))
+            ? '이미 동일한 ID로 가입 신청이 접수되었습니다.' 
+            : '가입 신청 실패: ' + error.message;
+        alert(msg);
+        _submitLock = false; if(btn) { btn.disabled = false; btn.innerText = '가입 신청'; }
         return;
     }
 
