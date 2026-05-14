@@ -1486,7 +1486,19 @@ window.checkSpecialHotelAccess = async function(value) {
     }
 };
 
+let _hotelSubmitLock = false;
+function _unlockHotelSubmit() {
+    _hotelSubmitLock = false;
+    const btn = document.querySelector('button[onclick="saveNewHotel()"]');
+    if (btn) { btn.disabled = false; btn.innerText = editingHotelIdForInfo ? '거래처 수정' : '거래처 등록'; }
+}
 window.saveNewHotel = async function() {
+    // 이중 클릭 방지
+    if (_hotelSubmitLock) return;
+    _hotelSubmitLock = true;
+    const btn = document.querySelector('button[onclick="saveNewHotel()"]');
+    if (btn) { btn.disabled = true; btn.innerText = '처리 중...'; }
+
     // [v38 SQL-First] platformData/saveData 제거 - DB 직접 CRUD
     const hName = document.getElementById('h_name').value.trim(),
           lId = document.getElementById('h_loginId').value.trim(),
@@ -1494,9 +1506,9 @@ window.saveNewHotel = async function() {
 
     // [추가] 라이트 요금제(레벨 1)일 경우 거래처 등록 제한
     const { data: factoryInfo } = await window.mySupabase.from('factories').select('*').eq('id', currentFactoryId).maybeSingle();
-    if (!factoryInfo) { alert('공장 정보를 불러올 수 없습니다.'); return; }
+    if (!factoryInfo) { alert('공장 정보를 불러올 수 없습니다.'); _unlockHotelSubmit(); return; }
     if (getFactoryPlanLevel(factoryInfo) === 1 && !editingHotelIdForInfo) {
-        if (!await window.checkHotelLimit(factoryInfo)) return;
+        if (!await window.checkHotelLimit(factoryInfo)) { _unlockHotelSubmit(); return; }
     }
 
     let isValid = true;
@@ -1524,22 +1536,28 @@ window.saveNewHotel = async function() {
         document.getElementById('h_fixedAmount').style.borderColor = 'var(--border)';
     }
 
-    if (!isValid) return;
+    if (!isValid) { _unlockHotelSubmit(); return; }
+
+    // 중복 거래처명 체크 (같은 공장 내)
+    const nameDupQuery = window.mySupabase.from('hotels').select('id').eq('factory_id', currentFactoryId).eq('name', hName);
+    if (editingHotelIdForInfo) nameDupQuery.neq('id', editingHotelIdForInfo);
+    const { data: dupName } = await nameDupQuery.maybeSingle();
+    if (dupName) { alert('같은 이름의 거래처가 이미 존재합니다.'); _unlockHotelSubmit(); return; }
 
     // [v38 SQL-First] ID 중복 체크 - DB에서 직접 조회
     const { data: dupFactory } = await window.mySupabase.from('factories').select('id').eq('admin_id', lId).maybeSingle();
-    if (dupFactory) { alert('중복 ID!'); return; }
+    if (dupFactory) { alert('중복 ID!'); _unlockHotelSubmit(); return; }
     const dupHotelQuery = window.mySupabase.from('hotels').select('id').eq('login_id', lId);
     if (editingHotelIdForInfo) dupHotelQuery.neq('id', editingHotelIdForInfo);
     const { data: dupHotel } = await dupHotelQuery.maybeSingle();
-    if (dupHotel) { alert('중복 호텔 ID!'); return; }
+    if (dupHotel) { alert('중복 호텔 ID!'); _unlockHotelSubmit(); return; }
 
     // [추가] 라디오 버튼 값
     const selectedType = document.querySelector('input[name="h_type"]:checked').value;
 
     // [추가] 특수거래처 제한 (엔터프라이즈 전용)
     if (selectedType === 'special') {
-        if (!await window.checkAccess('SPECIAL_HOTEL', factoryInfo, '특수거래처는 엔터프라이즈 요금제 전용 기능입니다. [요금제 업그레이드] 해주세요')) return;
+        if (!await window.checkAccess('SPECIAL_HOTEL', factoryInfo, '특수거래처는 엔터프라이즈 요금제 전용 기능입니다. [요금제 업그레이드] 해주세요')) { _unlockHotelSubmit(); return; }
     }
 
     if (editingHotelIdForInfo) {
@@ -1557,7 +1575,7 @@ window.saveNewHotel = async function() {
             hotel_type: selectedType
         };
         const { error: updateErr } = await window.mySupabase.from('hotels').update(updateData).eq('id', editingHotelIdForInfo);
-        if (updateErr) { alert('수정 실패: ' + updateErr.message); return; }
+        if (updateErr) { alert('수정 실패: ' + updateErr.message); _unlockHotelSubmit(); return; }
     } else {
         // 신규 등록 - DB 삽입
         const hId = 'h_' + Date.now();
@@ -1576,13 +1594,20 @@ window.saveNewHotel = async function() {
             hotel_type: selectedType
         };
         const { error: insertErr } = await window.mySupabase.from('hotels').insert([insertData]);
-        if (insertErr) { alert('등록 실패: ' + insertErr.message); return; }
+        if (insertErr) {
+            const msg = (insertErr.code === '23505' || insertErr.message?.includes('duplicate'))
+                ? '이미 동일한 정보로 등록된 거래처가 있습니다.'
+                : '등록 실패: ' + insertErr.message;
+            alert(msg);
+            _unlockHotelSubmit(); return;
+        }
     }
     closeModal('hotelModal');
     loadAdminDashboard();
     loadAdminHotelList();
     editingHotelIdForInfo = null;
     alert('저장 완료!');
+    _unlockHotelSubmit();
 };
 
 // 기존 함수 삭제 (아래의 async 버전으로 통합)
